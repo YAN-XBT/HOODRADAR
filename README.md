@@ -145,6 +145,11 @@ Prefer **Hermes cron → Telegram** (short alert). Full detail → local dashboa
 
 We built a **localhost web desk** so the full research view is easy on the eyes (not only Telegram short alerts).
 
+<p align="center">
+  <img src="assets/dashboard-home.jpg" alt="HOODRADAR localhost dashboard — Top traders · Hot Search · Buy the Dip" width="920"/>
+</p>
+<p align="center"><em>Home board (localhost) · 3 columns · research only · not a public SaaS</em></p>
+
 ```bash
 python3 scripts/dashboard_server.py
 # → http://127.0.0.1:8787

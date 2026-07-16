@@ -1,3 +1,33 @@
+## Local web dashboard
+
+**File:** `scripts/dashboard_server.py` + `web/`  
+
+Optional localhost board (3-col Home: traders · Hot Search · Dip · tabs for full reports).  
+Plain HTML/CSS/JS — **reshape with Hermes** (no black-box SaaS).  
+
+```bash
+python3 scripts/dashboard_server.py
+# http://127.0.0.1:8787
+```
+
+See [LOCAL_DASHBOARD.md](./LOCAL_DASHBOARD.md).
+
+---
+
+## Hot Search (GMGN)
+
+**Script:** `scripts/hot_search.py`
+
+```bash
+gmgn-cli market hot-searches --chain robinhood --interval 24h --limit 30 --raw
+# or
+python3 scripts/hot_search.py --limit 30
+```
+
+UI twin of https://gmgn.ai/trend?chain=robinhood&tab=hotsearch
+
+Research only — search popularity ≠ quality.
+
 # MODULES — full product map (hoodradar)
 
 Each module is a **small script with one job**.  

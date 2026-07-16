@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HOODRADAR · local desk</title>
+  <link rel="stylesheet" href="/styles.css?v=8" />
+</head>
+<body>
+  <div class="bg"></div>
+
+  <header class="top">
+    <div class="brand">
+      <div class="logo">HOOD<span>RADAR</span></div>
+      <div class="sub">Robinhood Chain · research only · localhost</div>
+    </div>
+    <div class="actions">
+      <button id="btn-refresh" class="btn ghost" type="button">Refresh</button>
+      <button id="btn-wallets" class="btn" type="button">Scan wallets</button>
+      <button id="btn-hot" class="btn" type="button">Run hot</button>
+      <button id="btn-dip" class="btn" type="button">Run dip</button>
+      <button id="btn-smart" class="btn" type="button">Run smart</button>
+      <button id="btn-all" class="btn primary" type="button">Run all</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs" role="tablist">
+    <button class="tab active" data-tab="home" type="button">Home</button>
+    <button class="tab" data-tab="hot" type="button">Hot Search</button>
+    <button class="tab" data-tab="dip" type="button">Buy the Dip</button>
+    <button class="tab" data-tab="smart" type="button">Smart Buys</button>
+    <button class="tab" data-tab="wallets" type="button">Wallets</button>
+  </nav>
+
+  <section class="status" id="status">
+    <span class="pill">loading…</span>
+  </section>
+
+  <!-- HOME · 3 columns -->
+  <main id="panel-home" class="panel active home-board">
+    <section class="card col-card">
+      <div class="card-h">
+        <h2>Top traders</h2>
+        <span class="tag">RH · top 20</span>
+      </div>
+      <p class="muted tiny">
+        Birdeye PnL
+        <a class="ext" href="https://birdeye.so/" target="_blank" rel="noopener">full list ↗</a>
+      </p>
+      <div id="home-wallets" class="wallet-list col-scroll"></div>
+    </section>
+
+    <section class="card col-card">
+      <div class="card-h">
+        <h2>Hot Search</h2>
+        <span class="tag">GMGN</span>
+      </div>
+      <p class="muted tiny">
+        most searched RH
+        <a class="ext" href="https://gmgn.ai/trend?chain=robinhood&tab=hotsearch" target="_blank" rel="noopener">gmgn ↗</a>
+      </p>
+      <div id="home-hot" class="hits compact col-scroll"></div>
+    </section>
+
+    <section class="card col-card">
+      <div class="card-h">
+        <h2>Buy the Dip</h2>
+        <span class="tag">≥20% dump</span>
+      </div>
+      <p class="muted tiny">GMGN trending dips · research only</p>
+      <div id="home-dip" class="hits compact col-scroll"></div>
+    </section>
+
+    <section class="card home-smart-row">
+      <div class="card-h">
+        <h2>Smart buys (safe)</h2>
+        <span class="tag">preview · full tab</span>
+      </div>
+      <div id="home-smart" class="hits compact home-smart-grid"></div>
+    </section>
+  </main>
+
+  <!-- HOT SEARCH -->
+  <main id="panel-hot" class="panel">
+    <section class="card wide">
+      <div class="card-h">
+        <h2>Hot Search · Robinhood</h2>
+        <span class="tag">gmgn market hot-searches</span>
+      </div>
+      <p class="muted">
+        Same data family as
+        <a class="ext" href="https://gmgn.ai/trend?chain=robinhood&tab=hotsearch" target="_blank" rel="noopener">gmgn.ai Hot Search ↗</a>
+        · not a buy signal · research only
+      </p>
+      <div id="hot-meta" class="meta"></div>
+      <div id="hot-hits" class="hits"></div>
+      <pre id="hot-brief" class="brief"></pre>
+    </section>
+  </main>
+
+  <!-- DIP -->
+  <main id="panel-dip" class="panel">
+    <section class="card wide">
+      <div class="card-h">
+        <h2>Buy the Dip · full report</h2>
+        <span class="tag">GMGN RH top 10 · dump ≥20%</span>
+      </div>
+      <div id="dip-meta" class="meta"></div>
+      <div id="dip-hits" class="hits"></div>
+      <pre id="dip-brief" class="brief"></pre>
+    </section>
+  </main>
+
+  <!-- SMART -->
+  <main id="panel-smart" class="panel">
+    <section class="card wide">
+      <div class="card-h">
+        <h2>Smart Buys · full report</h2>
+        <span class="tag">high-PnL buys · honeypot drop</span>
+      </div>
+      <div id="smart-meta" class="meta"></div>
+      <div id="smart-dropped" class="dropped"></div>
+      <div id="smart-hits" class="hits"></div>
+      <pre id="smart-brief" class="brief"></pre>
+    </section>
+  </main>
+
+  <!-- WALLETS -->
+  <main id="panel-wallets" class="panel">
+    <section class="card wide">
+      <div class="card-h">
+        <h2>Wallets · expanded</h2>
+        <span class="tag">top 20 + recent buys</span>
+      </div>
+      <p class="muted">
+        <a class="ext" href="https://docs.birdeye.so/" target="_blank" rel="noopener">Birdeye API docs ↗</a>
+        · chain locked to <strong>robinhood</strong>
+      </p>
+      <div id="wallets-full" class="wallet-list"></div>
+      <pre id="wallets-brief" class="brief"></pre>
+    </section>
+  </main>
+
+  <footer class="foot">
+    DYOR · not financial advice · research only · keys never shown
+  </footer>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/app.js?v=8"></script>
+</body>
+</html>

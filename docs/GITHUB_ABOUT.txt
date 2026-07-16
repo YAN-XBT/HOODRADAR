@@ -1,0 +1,6 @@
+About (GitHub repo description, paste short):
+
+Robinhood Chain research desk for Hermes Agent — Hot Search, buy-the-dip, smart buys + honeypot filter, cron examples, optional localhost web dashboard (customize with Hermes).
+
+Topics (optional):
+robinhood-chain, hermes-agent, gmgn, birdeye, research-only, meme, dashboard

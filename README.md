@@ -7,7 +7,8 @@
 
 # hoodradar
 
-> High-PnL wallets · honeypot filter · buy-the-dip on GMGN RH trend  
+> High-PnL wallets · honeypot filter · buy-the-dip · GMGN Hot Search  
+> **Local web dashboard** (optional) · **customize the UI with Hermes**  
 > **Built to run inside [Hermes Agent](https://hermes-agent.nousresearch.com/docs/)** — Telegram in, research briefs out.  
 > **Your API keys stay on your machine.**
 
@@ -121,14 +122,62 @@ You need:
 
 Cron delivery → Telegram home chat (Hermes cron `deliver`).
 
-### 5) Optional crons (Hermes)
+### 5) Example crons (Hermes) — customize for yourself
 
-Copy prompts from:
+These are **examples only**. Change hours, mcap, and windows to your desk.
 
-- [hermes/cron-buy-the-dip.md](./hermes/cron-buy-the-dip.md) — 2×/day dips  
-- [hermes/cron-smart-buys.md](./hermes/cron-smart-buys.md) — periodic wallet tape  
+| Example job | Sample UTC schedule | Template |
+|-------------|---------------------|----------|
+| Buy the dip | `0 7,15 * * *` | [hermes/cron-buy-the-dip.md](./hermes/cron-buy-the-dip.md) |
+| Smart buys | `0 * * * *` or `*/30 * * * *` | [hermes/cron-smart-buys.md](./hermes/cron-smart-buys.md) |
+| Cache refresh (for local UI) | after scans | [hermes/cron-dashboard-refresh.md](./hermes/cron-dashboard-refresh.md) |
 
-Schedule examples (UTC): `0 7,15 * * *` (dip), `0 * * * *` (hourly smart buys).
+**Full guide + system crontab options:** [docs/CRON_EXAMPLES.md](./docs/CRON_EXAMPLES.md)
+
+```bash
+# one-shot bundle (also what cron can run)
+bash scripts/run_cron_bundle.sh all   # dip | smart | all
+```
+
+Prefer **Hermes cron → Telegram** (short alert). Full detail → local dashboard below.
+
+### 6) Local web dashboard (optional — full operator UI)
+
+We built a **localhost web desk** so the full research view is easy on the eyes (not only Telegram short alerts).
+
+```bash
+python3 scripts/dashboard_server.py
+# → http://127.0.0.1:8787
+```
+
+**What’s on the board**
+
+| Home column | Source |
+|-------------|--------|
+| **Top traders** | Birdeye RH PnL top 20 |
+| **Hot Search** | GMGN `market hot-searches --chain robinhood` |
+| **Buy the Dip** | GMGN trending dips ≥20% |
+| Tabs | full Hot Search · Dip · Smart Buys · Wallets |
+
+- Full CAs · social links · DROPPED honeypots on Smart Buys  
+- Optional mini price sparklines (GMGN kline)  
+- Buttons: Run hot / dip / smart / wallets / all  
+- **127.0.0.1 only by default** — not a public SaaS site  
+
+**Easy to reshape with Hermes**  
+This UI is plain files under `web/` + `scripts/dashboard_server.py`.
+
+Ask Hermes things like:
+
+```text
+Make the Home columns denser / swap order of Hot Search and Dip
+Add a filter pill for mcap under $1M
+Hide sparkline charts on Home, only show them in full tabs
+```
+
+Hermes can edit HTML/CSS/JS on your clone. No closed black box.
+
+Docs: **[docs/LOCAL_DASHBOARD.md](./docs/LOCAL_DASHBOARD.md)** · cron examples: **[docs/CRON_EXAMPLES.md](./docs/CRON_EXAMPLES.md)**
 
 ---
 
@@ -136,18 +185,21 @@ Schedule examples (UTC): `0 7,15 * * *` (dip), `0 * * * *` (hourly smart buys).
 
 | Module | Script | Job |
 |--------|--------|-----|
+| **Hot Search** | `scripts/hot_search.py` | GMGN RH **hot-searches** (most searched · same family as trend?tab=hotsearch) |
 | **Buy the Dip** | `scripts/buy_the_dip.py` | GMGN RH top 10 trend · large mcap/liq · dump **≥20%** |
 | **Smart Buys** | `scripts/rh_smart_buys.py` | Birdeye high-PnL RH wallets + buys + **honeypot drop** |
 | **Wallet Board** | `scripts/smart_wallet_tracker.py` | Raw PnL leaderboard |
 | **Short Alert** | `scripts/format_short_alert.py` | Telegram-sized text |
-| **Hermes pack** | `hermes/*` | SOUL + skill + cron templates |
+| **Cron bundle** | `scripts/run_cron_bundle.sh` | Example automated scans → `cron/cache/` |
+| **Local web dashboard** | `scripts/dashboard_server.py` + `web/` | Home 3-col board · tabs · optional sparklines · **remap with Hermes** |
+| **Hermes pack** | `hermes/*` | SOUL + skill + **example** cron templates |
 
 Details: [docs/MODULES.md](./docs/MODULES.md)
 
 ```text
  Birdeye (RH PnL + txs) ──┐
-                          ├──► rh_smart_buys ──► Hermes / Telegram
- GMGN security + info ────┘
+                          ├──► rh_smart_buys ──► Hermes / Telegram (short)
+ GMGN security + info ────┘              └──► cron/cache ──► localhost UI (full)
 
  GMGN trending (RH top 10) ──► buy_the_dip (≥20% dump)
 ```
@@ -160,9 +212,10 @@ Details: [docs/MODULES.md](./docs/MODULES.md)
 You (Telegram) 
     ↕  Hermes Gateway
 Hermes Agent (profile SOUL = hoodradar)
-    → runs scripts in RH_DESK_ROOT
+    → runs scripts / cron examples in RH_DESK_ROOT
     → Birdeye + GMGN (your keys)
-    → brief back to Telegram
+    → short brief → Telegram
+    → full JSON → cron/cache → optional localhost dashboard
 ```
 
 ---
@@ -183,6 +236,8 @@ Hermes Agent (profile SOUL = hoodradar)
 | Doc | For |
 |-----|-----|
 | [docs/HERMES_SETUP.md](./docs/HERMES_SETUP.md) | **Primary** — Portal / Desktop / CLI |
+| [docs/CRON_EXAMPLES.md](./docs/CRON_EXAMPLES.md) | **Example crons** — customize schedules |
+| [docs/LOCAL_DASHBOARD.md](./docs/LOCAL_DASHBOARD.md) | Localhost full UI |
 | [docs/API_KEYS.md](./docs/API_KEYS.md) | Birdeye + GMGN |
 | [docs/INSTALL.md](./docs/INSTALL.md) | Scripts bootstrap (`install.sh`) |
 | [docs/MODULES.md](./docs/MODULES.md) | Each module why/how |

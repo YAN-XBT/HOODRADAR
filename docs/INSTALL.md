@@ -1,98 +1,88 @@
-# INSTALL — hoodradar from GitHub to working desk
+# INSTALL — bootstrap scripts (used by Hermes hosts)
 
-**Audience:** anyone who can open a terminal (or Hermes with terminal tools).  
-**Time:** ~20–40 minutes including API signups.
+This file is the **script layer**.  
+**Primary user journey:** [HERMES_SETUP.md](./HERMES_SETUP.md) (Portal / Desktop / CLI + Telegram).
+
+Hermes Agent docs: https://hermes-agent.nousresearch.com/docs/
 
 ---
 
-## 1. Clone
+## 1. Clone (on the machine Hermes uses)
 
 ```bash
 git clone https://github.com/YAN-XBT/HOODRADAR.git
-cd hoodradar
+cd HOODRADAR
 ```
-
-Replace `YAN-XBT` with the GitHub username that published the repo.
 
 ---
 
-## 2. Bootstrap
+## 2. Bootstrap tools
 
 ```bash
 chmod +x install.sh
 ./install.sh
+source tools/env.sh
 ```
 
-Installs local `gmgn-cli` under `./tools`, creates `.env`, writes `tools/env.sh`.
+Installs local `gmgn-cli`, creates `.env` from example.
+
+Requires: **Python 3.10+**, **Node/npm 18+**.
 
 ---
 
-## 3. API keys
+## 3. Keys
 
-Follow **[API_KEYS.md](./API_KEYS.md)** in full:
-
-1. Birdeye → `.env` → `BIRDEYE=...`  
-2. GMGN → `gmgn-cli config` → create key on https://gmgn.ai/ai → `config --apply`  
-
-Both verified with the test commands in that doc.
-
----
-
-## 4. First runs (CLI)
+Full guide: [API_KEYS.md](./API_KEYS.md)
 
 ```bash
+# .env
+BIRDEYE=...
+
 source tools/env.sh
+gmgn-cli config
+gmgn-cli config --apply 'gmgn_...'
+gmgn-cli config --check
+```
 
-# A) Buy the dip — top 10 RH trend, large, dump ≥20%
-python3 scripts/buy_the_dip.py \
-  --interval 1h --top 10 --min-drop 20 \
-  --min-mcap 50000 --min-liq 15000
+---
 
-# B) High-PnL wallet buys + honeypot filter
-python3 scripts/rh_smart_buys.py \
-  --minutes 15 --max-mcap 200000 --top 12
+## 4. Smoke (CLI)
 
-# C) Short text for Telegram
+```bash
+python3 scripts/buy_the_dip.py --interval 1h --top 10 --min-drop 20
+python3 scripts/rh_smart_buys.py --minutes 15 --max-mcap 200000 --top 8
 python3 scripts/format_short_alert.py cron/cache/buy_the_dip.json
 ```
 
----
-
-## 5. Hermes Agent (optional but recommended)
-
-See **[HERMES_SETUP.md](./HERMES_SETUP.md)**.
-
-Short version:
-- clone path on Hermes host  
-- profile SOUL from `hermes/SOUL.md`  
-- keys only in profile `.env` + gmgn-cli  
-- cron templates in `hermes/`
+Then continue Hermes SOUL + Telegram: **[HERMES_SETUP.md](./HERMES_SETUP.md)**.
 
 ---
 
-## 6. Schedule (optional)
+## 5. Telegram (Hermes, not this repo)
 
-```cron
-# UTC — twice daily buy-the-dip
-0 7,15 * * * cd /path/to/hoodradar && . tools/env.sh && python3 scripts/buy_the_dip.py --interval 1h --top 10 && python3 scripts/buy_the_dip.py --interval 24h --top 10 >> cron/cache/cron.log 2>&1
+```bash
+hermes gateway setup
 ```
+
+Docs:
+
+- https://hermes-agent.nousresearch.com/docs/user-guide/messaging/telegram  
+- https://hermes-agent.nousresearch.com/docs/user-guide/messaging/  
+
+---
+
+## 6. Windows / Desktop notes
+
+- Prefer clone path **without** double nesting (`HOODRADAR/HOODRADAR/...`)  
+- Root must contain `README.md` and `scripts/`  
+- LF/CRLF warnings in Git can be ignored  
+- If Desktop has no npm: use WSL or run `install.sh` on a Linux Hermes host  
 
 ---
 
 ## 7. Success criteria
 
-- [ ] Trending RH JSON returns  
-- [ ] Birdeye gainers on `robinhood` work  
-- [ ] Honeypot sample shows up under **DROPPED** when hit  
-- [ ] Full CAs copy-paste without `…`  
-- [ ] No secrets in git  
-
----
-
-## 8. Update later
-
-```bash
-cd hoodradar
-git pull
-# re-run install.sh only if gmgn-cli missing
-```
+- [ ] CLI smoke OK  
+- [ ] Hermes profile SOUL points at `RH_DESK_ROOT`  
+- [ ] Chat command returns a brief  
+- [ ] Gateway delivers to Telegram (if you use mobile)

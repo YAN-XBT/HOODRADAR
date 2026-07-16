@@ -1,196 +1,211 @@
-# Hermes Agent setup — copy hoodradar into your agent
+# Hermes setup — hoodradar (PRIMARY GUIDE)
 
-Goal: a user opens **your GitHub**, clones **hoodradar**, and runs the same research desk inside **their** Hermes Agent — with **their** API keys only.
+**Product assumption:** users install this **into Hermes Agent**, not as a random Python toy.
+
+Supported hosts:
+
+| Host | Notes |
+|------|--------|
+| **Nous Portal** (hosted VPS / agent) | [portal.nousresearch.com](https://portal.nousresearch.com) |
+| **Hermes Desktop** | Local app; clone into a workspace Hermes can read |
+| **Hermes CLI** | `hermes setup`, profiles, gateway on your machine |
+
+Official Hermes docs: https://hermes-agent.nousresearch.com/docs/
 
 ---
 
-## Architecture (recommended)
+## A. Install Hermes (if needed)
 
-```text
-Hermes profile:  hoodradar   (or rh-meme-desk)
-  SOUL.md        ← chain lock + commands (from this repo)
-  .env           ← BIRDEYE=... only on their machine
-  skills/        ← optional skill text pointing at scripts
-  workspace/ or /path/to/hoodradar  ← this git clone
+### Recommended — Nous Portal OAuth
 
-OS user runs:
-  gmgn-cli config   → ~/.config/gmgn/  (same user as Hermes)
+```bash
+hermes setup --portal
+```
+
+One flow: login → model provider → Tool Gateway (web, image, TTS, browser on paid Portal).
+
+Guide: https://hermes-agent.nousresearch.com/docs/guides/run-hermes-with-nous-portal  
+Portal: https://portal.nousresearch.com/manage-subscription  
+
+### Desktop
+
+Install Hermes Desktop from Nous / project docs, complete onboarding, ensure **terminal tools** work in chat.
+
+### CLI only
+
+```bash
+# see upstream README
+# https://github.com/nousresearch/hermes-agent
+hermes setup
+hermes model          # pick Nous Portal or other provider
 ```
 
 ---
 
-## Path A — Fastest (CLI inside Hermes)
+## B. Telegram gateway (alerts on your phone)
 
-### 1. Clone on the Hermes machine
+hoodradar does **not** implement Telegram itself. Hermes does.
+
+### Official docs
+
+- https://hermes-agent.nousresearch.com/docs/user-guide/messaging/telegram  
+- https://hermes-agent.nousresearch.com/docs/user-guide/messaging/  
+
+### Commands (typical)
 
 ```bash
-# example durable path
+hermes gateway setup     # interactive: Telegram bot token, allowlist, etc.
+hermes gateway           # run gateway (foreground)
+# production: enable gateway service as in Hermes docs for your host
+```
+
+### You need
+
+1. Telegram bot token from **@BotFather**  
+2. Your user id allowed to talk to the bot (Hermes pairing / allowlist)  
+3. Gateway **running** on the same environment as the hoodradar profile  
+4. Cron `deliver` → your Telegram chat / home channel  
+
+**Portal users:** messaging is often configured in Portal / profile UI — still the same idea (bot token + gateway).
+
+---
+
+## C. Install hoodradar into Hermes
+
+### 1) Clone where the agent can execute files
+
+**Portal / Linux agent example:**
+
+```bash
 mkdir -p /opt/data/src
 cd /opt/data/src
 git clone https://github.com/YAN-XBT/HOODRADAR.git
-cd hoodradar
+cd HOODRADAR
 chmod +x install.sh && ./install.sh
 ```
 
-### 2. Keys (private)
+**Desktop:** clone under the workspace folder Hermes uses (check Desktop docs / project root).
+
+`install.sh` installs local `gmgn-cli` + creates `.env.example` → `.env`.
+
+### 2) API keys (never commit)
+
+See [API_KEYS.md](./API_KEYS.md).
 
 ```bash
-# Birdeye
-cp .env.example .env
-nano .env   # BIRDEYE=...
+# Birdeye → .env in project OR Hermes profile .env
+echo 'BIRDEYE=your_key' >> .env
 
 # GMGN
 source tools/env.sh
 gmgn-cli config
-gmgn-cli config --apply 'gmgn_...'
+gmgn-cli config --apply 'gmgn_YOUR_KEY'
 gmgn-cli config --check
 ```
 
-Details: [API_KEYS.md](./API_KEYS.md)
+Prefer GMGN **trading disabled**.
 
-### 3. Create / use a Hermes profile
+### 3) Profile SOUL
 
-```bash
-# name is up to you
-hermes profile create hoodradar   # if your CLI supports it
-# or use Portal / existing profile
-```
-
-Copy soul:
+1. Create profile e.g. `hoodradar` (Portal UI / `hermes profile` / Desktop profiles)  
+2. Copy [../hermes/SOUL.md](../hermes/SOUL.md) → that profile’s `SOUL.md`  
+3. Edit `RH_DESK_ROOT` to your clone path  
 
 ```bash
-# Adjust paths to your Hermes layout
-cp /opt/data/src/hoodradar/hermes/SOUL.md \
-   ~/.hermes/profiles/hoodradar/SOUL.md
-# On Nous hosted profiles, path is often:
-# /opt/data/profiles/hoodradar/SOUL.md
+export RH_DESK_ROOT=/opt/data/src/HOODRADAR
+export PATH="$RH_DESK_ROOT/tools/node_modules/.bin:$PATH"
 ```
 
-Optional: put Birdeye in **profile** env:
+Put the same exports in profile env if your host supports profile `.env`.
 
-```bash
-# /opt/data/profiles/hoodradar/.env
-BIRDEYE=...
+### 4) Optional skill
+
+Copy [../hermes/skill-SKILL.md](../hermes/skill-SKILL.md) to:
+
+```text
+~/.hermes/profiles/<profile>/skills/hoodradar/SKILL.md
+# or Portal equivalent skills path
 ```
 
-And point scripts at the clone:
+### 5) Smoke in Telegram chat
 
-```bash
-# in profile env or shell
-export RH_DESK_ROOT=/opt/data/src/hoodradar
-export PATH="/opt/data/src/hoodradar/tools/node_modules/.bin:$PATH"
+```text
+Run buy the dip RH 1h top 10
 ```
 
-### 4. Smoke from Hermes chat
-
-Tell the agent:
-
-> Run buy-the-dip RH 1h top 10 min-drop 20. Use RH_DESK_ROOT=/opt/data/src/hoodradar and source tools/env.sh.
-
-Or:
-
-> Scan Robinhood high-PnL wallet buys last 15 minutes, mcap ≤ 200k, drop honeypots. Full CAs only.
+or short commands from SOUL: `dip` · `smart buys` · `short`
 
 Agent should run:
 
 ```bash
-source /opt/data/src/hoodradar/tools/env.sh
-export RH_DESK_ROOT=/opt/data/src/hoodradar
-python3 $RH_DESK_ROOT/scripts/buy_the_dip.py --interval 1h --top 10
-python3 $RH_DESK_ROOT/scripts/rh_smart_buys.py --minutes 15 --max-mcap 200000 --top 12
+source "$RH_DESK_ROOT/tools/env.sh"
+python3 "$RH_DESK_ROOT/scripts/buy_the_dip.py" --interval 1h --top 10
+python3 "$RH_DESK_ROOT/scripts/rh_smart_buys.py" --minutes 15 --top 8
+python3 "$RH_DESK_ROOT/scripts/format_short_alert.py" "$RH_DESK_ROOT/cron/cache/buy_the_dip.json"
 ```
 
 ---
 
-## Path B — Drop-in profile kit (from this repo)
+## D. Cron inside Hermes
 
-This repo includes:
+Use Hermes **cron** (not system cron only) so delivery hits Telegram.
 
-```text
-hermes/
-  SOUL.md           # paste into profile SOUL
-  skill-SKILL.md    # optional skill body
-  cron-buy-the-dip.md   # cron prompt template
-  cron-smart-buys.md
-```
+| Job | Template | Schedule idea (UTC) |
+|-----|----------|---------------------|
+| Buy the dip | [../hermes/cron-buy-the-dip.md](../hermes/cron-buy-the-dip.md) | `0 7,15 * * *` |
+| Smart buys | [../hermes/cron-smart-buys.md](../hermes/cron-smart-buys.md) | `0 * * * *` or `*/30 * * * *` |
 
-### Steps
+In cron UI / tool:
 
-1. Create profile `hoodradar` in Hermes / Portal  
-2. Paste `hermes/SOUL.md` into profile SOUL (or replace file)  
-3. Clone repo path into SOUL’s documented `RH_DESK_ROOT`  
-4. Add API keys only to profile `.env` + `gmgn-cli config`  
-5. Create crons using the markdown templates (copy prompt text into Hermes cron UI / `cronjob` tool)  
-
-### Suggested crons
-
-| Job | Schedule (UTC) | Script |
-|-----|----------------|--------|
-| Buy the dip | `0 7,15 * * *` (≈ 10:00 & 18:00 Riga) | `buy_the_dip` 1h + 24h |
-| Smart buys | every 30–60m | `rh_smart_buys --minutes 30` quiet-ish |
-
-Deliver to Telegram home channel. **Never autotrade.**
+- Paste the **prompt** from the template  
+- Enable **terminal** (+ file) tools  
+- Deliver to **origin** or your Telegram home  
+- Set `RH_DESK_ROOT` correctly in the prompt  
 
 ---
 
-## Chat command cheat-sheet (put in SOUL)
+## E. Portal vs Desktop vs CLI checklist
 
-| User says | Agent does |
-|-----------|------------|
-| `dip` / `buy the dip` | `buy_the_dip.py --interval 1h` (+ optional 24h) |
-| `smart buys` / `pnL scan` | `rh_smart_buys.py --minutes 15` |
-| `short` | `format_short_alert.py` on latest JSON |
-| `board` | `smart_wallet_tracker.py` |
-
-Always:
-- chain **robinhood only**
-- full CAs
-- DYOR footer
-- no key printing
+| Step | Portal | Desktop | CLI |
+|------|--------|---------|-----|
+| Hermes running | Hosted instance | App open | `hermes gateway` / session |
+| Clone HOODRADAR | SSH/terminal on instance | Local disk workspace | Local disk |
+| `./install.sh` | Yes | Yes (or WSL) | Yes |
+| Keys | Profile/project `.env` + gmgn-cli | Same | Same |
+| SOUL | Profile editor / file | Profile file | `~/.hermes/profiles/...` |
+| Telegram | Gateway / Portal messaging | `hermes gateway setup` | `hermes gateway setup` |
+| Cron | Portal/agent cron | Agent cron | Agent cron |
 
 ---
 
-## What users copy from GitHub vs what they create
-
-| From GitHub (public) | User creates (private) |
-|----------------------|-------------------------|
-| All scripts | Birdeye API key |
-| SOUL + skill text | GMGN API key + keypair |
-| install.sh + docs | Profile `.env` |
-| cron **templates** | Live cron jobs on their Hermes |
-| defaults (mcap/liq/drop) | Their Telegram delivery targets |
-
----
-
-## Troubleshooting on Hermes
+## F. Troubleshooting (Hermes-specific)
 
 | Issue | Fix |
 |-------|-----|
+| Agent can’t find scripts | Wrong `RH_DESK_ROOT`; re-check path in SOUL |
 | `gmgn-cli: not found` | `source $RH_DESK_ROOT/tools/env.sh` or re-run `install.sh` |
-| Birdeye 401 | Profile `.env` missing `BIRDEYE` for the **running** profile |
-| Wrong chain data | SOUL must forbid sol/base; scripts hardcode `robinhood` |
-| Cron empty output | Normal if no ≥20% large dumps; still send “no setups” |
-| Permission on `/opt/data` | Clone under profile workspace the agent can read |
+| Birdeye 401 | `BIRDEYE` missing in **this** profile’s env |
+| No Telegram replies | Gateway not running / bot token / user not allowlisted — see Telegram docs |
+| Cron silent | Check deliver target; empty dip window is normal |
+| Wrong chain data | SOUL chain lock; never install SOL KOL feeds as RH |
 
 ---
 
-## Security for Hermes users
+## G. Security
 
-1. Separate profile for trading vs research (this one = research)  
-2. GMGN trading disabled  
-3. Do not put keys in SOUL.md or skills (env only)  
-4. Do not `cat` `.env` into Telegram  
+- Research profile ≠ trading profile  
+- No swap private keys in hoodradar  
+- Never paste keys into Telegram  
+- Don’t commit `.env` or `~/.config/gmgn/keypair.pem`  
 
 ---
 
-## Done checklist
+## H. Done when
 
-- [ ] Repo cloned on Hermes host  
-- [ ] `install.sh` OK  
-- [ ] Birdeye + GMGN verified  
-- [ ] SOUL installed on profile  
-- [ ] Manual `dip` + `smart buys` work in chat  
-- [ ] Optional cron delivers to Telegram  
-- [ ] `git status` clean of secrets  
+- [ ] Hermes chat can run `dip` and return a brief  
+- [ ] Honeypots land under DROPPED when present  
+- [ ] Full CAs copyable  
+- [ ] Telegram receives agent messages (gateway OK)  
+- [ ] Optional: cron fired once with a test run  
 
-Next: [MODULES.md](./MODULES.md) · [INSTALL.md](./INSTALL.md)
+Next: [MODULES.md](./MODULES.md) · [API_KEYS.md](./API_KEYS.md)

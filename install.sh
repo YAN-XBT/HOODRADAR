@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# install.sh — lightweight local setup for RH Chain Research Desk (DIY)
+# install.sh — bootstrap gmgn-cli + .env for hoodradar
+# Primary product path: Hermes Agent (Portal / Desktop / CLI). See docs/HERMES_SETUP.md
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -73,5 +74,6 @@ echo "     source tools/env.sh"
 echo "     python3 scripts/buy_the_dip.py --interval 1h --top 10"
 echo "     python3 scripts/rh_smart_buys.py --minutes 15 --top 8"
 echo
-echo "Read docs/INSTALL.md and DISCLAIMER.md before going further."
+echo "Read docs/HERMES_SETUP.md (Hermes + Telegram) and docs/API_KEYS.md before going further."
+echo "Hermes docs: https://hermes-agent.nousresearch.com/docs/"
 echo "Done."

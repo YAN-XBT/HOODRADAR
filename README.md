@@ -1,3 +1,9 @@
+<p align="center">
+  <img src="assets/hoodradar-banner.jpg" alt="HOODRADAR" width="720"/>
+</p>
+
+<p align="center"><strong>Robinhood Chain research desk</strong> · clone into Hermes Agent or plain CLI</p>
+
 # hoodradar
 
 **Robinhood Chain research desk you can clone into Hermes Agent (or plain CLI).**

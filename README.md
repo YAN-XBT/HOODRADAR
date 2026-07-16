@@ -150,10 +150,22 @@ We built a **localhost web desk** so the full research view is easy on the eyes 
 </p>
 <p align="center"><em>Home board (localhost) · 3 columns · research only · not a public SaaS</em></p>
 
+### Quick start
+
+**Windows (one click):**
+```
+START_DASHBOARD.bat
+```
+Then open **http://127.0.0.1:8787** and hard-refresh (Ctrl+F5).
+
+**Linux / macOS:**
 ```bash
 python3 scripts/dashboard_server.py
 # → http://127.0.0.1:8787
 ```
+
+The dashboard ships with demo `cron/cache/*.json`, so the board renders immediately.  
+Live **Run** buttons and sparklines need your `gmgn-cli` + keys (see [API_KEYS.md](./docs/API_KEYS.md)).
 
 **What’s on the board**
 

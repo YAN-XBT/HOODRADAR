@@ -1,0 +1,17 @@
+# Git ignore — keep secrets local
+.env
+.env.*
+!.env.example
+secrets/
+**/keypair.pem
+**/*private*
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+tools/node_modules/
+cron/cache/*
+!cron/cache/.gitkeep
+*.log
+.DS_Store

@@ -119,12 +119,12 @@
         </div>
         <div class="card" style="margin-top:16px;">
           <div class="card-h">
-            <h2>TRENDING <span class="tag">1h vol</span></h2>
-            <div class="sub">Curve buy+sell · mc ≥ $5k · research only</div>
+            <h2>TRENDING <span class="tag">GMGN 1m</span></h2>
+            <div class="sub">Live openapi.gmgn.ai · robinhood · no buy</div>
           </div>
           <div style="overflow-x:auto;">
             <table>
-              <thead><tr><th>Token</th><th class="r">MC</th><th class="r">Liq</th><th class="r">1h Vol</th><th class="r">1h TXs</th><th class="r">Chg</th></tr></thead>
+              <thead><tr><th>Token</th><th class="r">MC</th><th class="r">ATH</th><th class="r">Liq</th><th class="r">Vol</th><th class="r">TXs</th><th class="r">Hold</th><th class="r">Chg</th></tr></thead>
               <tbody id="trending-home"></tbody>
             </table>
           </div>
@@ -159,10 +159,12 @@
         <div class="card">
           <div class="card-h">
             <h2>TRENDING</h2>
-            <div class="sub">PONS curve volume · no buy buttons · ATH/holders not available on-chain here</div>
+            <div class="sub">GMGN market/rank · chain=robinhood · research only · no buy</div>
+            <div class="meta" id="trending-meta"></div>
             <div class="meta trend-tog">
-              <button class="btn trend-btn on" type="button" data-tw="1h">1H</button>
+              <button class="btn trend-btn on" type="button" data-tw="1m">1M</button>
               <button class="btn trend-btn" type="button" data-tw="5m">5M</button>
+              <button class="btn trend-btn" type="button" data-tw="1h">1H</button>
             </div>
           </div>
           <div style="overflow-x:auto;">
@@ -171,9 +173,11 @@
                 <tr>
                   <th>Token / Age</th>
                   <th class="r">MC</th>
+                  <th class="r">ATH MC</th>
                   <th class="r">Liq</th>
                   <th class="r">Vol</th>
                   <th class="r">TXs</th>
+                  <th class="r">Holders</th>
                   <th class="r">Chg</th>
                 </tr>
               </thead>

@@ -6,6 +6,8 @@ import hashlib
 import json
 import re
 import threading
+import uuid
+import os
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -1294,6 +1296,153 @@ def get_x_feed(force: bool = False) -> dict:
     return {"posts": posts, "error": err, "source": source, "handles": handles, "cached": False}
 
 
+
+GMGN_HOST = "https://openapi.gmgn.ai"
+GMGN_WIN_CFG = Path(r"C:\Users\DEPUTAT\Desktop\HOODRADAR\config\gmgn.json")
+_gmgn_cache = {}  # interval -> {at, rows, error}
+
+
+def load_gmgn_key() -> str | None:
+    k = (os.environ.get("GMGN_API_KEY") or "").strip()
+    if k:
+        return k
+    for path in (CONFIG / "gmgn.json", GMGN_WIN_CFG):
+        try:
+            blob = json.loads(Path(path).read_text(encoding="utf-8"))
+            k = (blob.get("apiKey") or blob.get("api_key") or blob.get("key") or "").strip()
+            if k:
+                return k
+        except Exception:
+            continue
+    return None
+
+
+def _gmgn_num(v):
+    if v is None or v == "":
+        return None
+    try:
+        return float(v)
+    except Exception:
+        return None
+
+
+def map_gmgn_rank(item: dict) -> dict:
+    tw = item.get("twitter") or item.get("twitter_username") or item.get("twitter_name") or ""
+    if isinstance(tw, dict):
+        tw = tw.get("username") or tw.get("url") or ""
+    logo = item.get("logo") or item.get("logo_url") or item.get("image") or ""
+    chg = item.get("price_change_percent")
+    if chg is None:
+        chg = item.get("price_change") or item.get("price_change_percent1h")
+    chg = _gmgn_num(chg)
+    # some payloads use 0-1 fraction
+    if chg is not None and abs(chg) <= 1.5 and item.get("price_change_percent") is None:
+        pass
+    created = item.get("creation_timestamp") or item.get("created_timestamp") or item.get("open_timestamp")
+    age = None
+    if created:
+        try:
+            ts = int(created)
+            if ts > 10_000_000_000:
+                ts //= 1000
+            sec = max(0, int(time.time()) - ts)
+            if sec < 90:
+                age = f"{sec}s"
+            elif sec < 3600:
+                age = f"{sec // 60}m"
+            elif sec < 86400:
+                age = f"{sec // 3600}h"
+            else:
+                age = f"{sec // 86400}d"
+        except Exception:
+            age = None
+    socials = {}
+    if tw:
+        socials["twitter"] = str(tw)
+    return {
+        "sym": item.get("symbol") or item.get("token_symbol") or "?",
+        "name": item.get("name") or item.get("token_name") or "",
+        "addr": item.get("address") or item.get("token_address") or "",
+        "logo": logo,
+        "mc": _gmgn_num(item.get("market_cap") if item.get("market_cap") is not None else item.get("usd_market_cap")),
+        "ath_mc": _gmgn_num(item.get("history_highest_market_cap") or item.get("ath_market_cap")),
+        "liq": _gmgn_num(item.get("liquidity")),
+        "vol": _gmgn_num(item.get("volume") if item.get("volume") is not None else item.get("volume_usd")),
+        "swaps": int(_gmgn_num(item.get("swaps")) or 0),
+        "buys": int(_gmgn_num(item.get("buys")) or 0) if item.get("buys") is not None else None,
+        "sells": int(_gmgn_num(item.get("sells")) or 0) if item.get("sells") is not None else None,
+        "holders": int(_gmgn_num(item.get("holder_count") if item.get("holder_count") is not None else item.get("holder")) or 0) if (item.get("holder_count") is not None or item.get("holder") is not None) else None,
+        "chg": chg,
+        "age": age,
+        "socials": socials,
+        "twitter": str(tw) if tw else None,
+        "source": "gmgn",
+    }
+
+
+def fetch_gmgn_rank(interval: str = "1m") -> dict:
+    interval = (interval or "1m").lower().strip()
+    if interval not in ("1m", "5m", "1h", "6h", "24h"):
+        interval = "1m"
+    now = time.time()
+    cached = _gmgn_cache.get(interval)
+    if cached and now - cached["at"] < 12:
+        return cached
+    key = load_gmgn_key()
+    if not key:
+        out = {"at": now, "rows": [], "error": "set GMGN_API_KEY", "interval": interval, "source": None}
+        _gmgn_cache[interval] = out
+        return out
+    last_err = None
+    rows = []
+    for order_by in ("swaps", "volume"):
+        ts = int(time.time())
+        cid = str(uuid.uuid4())
+        q = (
+            f"chain=robinhood&interval={quote(interval)}&limit=50"
+            f"&order_by={order_by}&direction=desc&timestamp={ts}&client_id={quote(cid)}"
+        )
+        url = f"{GMGN_HOST}/v1/market/rank?{q}"
+        req = Request(
+            url,
+            headers={
+                "X-APIKEY": key,
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "User-Agent": "HOODRADAR/2 (research)",
+            },
+        )
+        try:
+            with urlopen(req, timeout=12) as resp:
+                raw = resp.read().decode("utf-8")
+            envelope = json.loads(raw)
+        except Exception as e:
+            last_err = str(e)
+            continue
+        if not isinstance(envelope, dict):
+            last_err = "unexpected payload"
+            continue
+        if envelope.get("code") not in (0, "0", None) and envelope.get("data") is None:
+            last_err = envelope.get("error") or envelope.get("message") or f"gmgn code {envelope.get('code')}"
+            continue
+        data = envelope.get("data") if "data" in envelope else envelope
+        rank = []
+        if isinstance(data, dict):
+            rank = data.get("rank") or data.get("ranks") or data.get("list") or []
+        elif isinstance(data, list):
+            rank = data
+        if not rank:
+            last_err = last_err or f"empty rank order_by={order_by}"
+            continue
+        rows = [map_gmgn_rank(it) for it in rank if isinstance(it, dict)]
+        out = {"at": now, "rows": rows, "error": None, "interval": interval, "source": f"gmgn {order_by}"}
+        _gmgn_cache[interval] = out
+        return out
+    out = {"at": now, "rows": [], "error": last_err or "GMGN rank empty", "interval": interval, "source": None}
+    _gmgn_cache[interval] = out
+    return out
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print(f"[{fmt_now()}] {self.address_string()} {fmt % args}")
@@ -1328,6 +1477,17 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/xfeed":
             feed = get_x_feed(force=False)
             return self._json(200, feed)
+        if path == "/api/trending":
+            qs = parse_qs(parsed.query)
+            interval = (qs.get("interval") or ["1m"])[0]
+            data = fetch_gmgn_rank(str(interval))
+            return self._json(200, {
+                "interval": data.get("interval"),
+                "rows": data.get("rows") or [],
+                "error": data.get("error"),
+                "source": data.get("source"),
+                "updated_at": fmt_now(),
+            })
         if path == "/api/img":
             qs = parse_qs(parsed.query)
             u = (qs.get("u") or [""])[0]

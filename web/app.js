@@ -161,13 +161,23 @@ function renderXFeed(data) {
   }).join("");
 }
 
-let TREND_W = "1h";
+let TREND_W = "1m";
+let TREND_TIMER = 0;
+let TREND_ERR = "";
 
-function renderTrending(rows, tbody, compact) {
+function fmtHolders(n) {
+  if (n == null || Number.isNaN(Number(n))) return "—";
+  const v = Number(n);
+  if (v >= 1e6) return (v / 1e6).toFixed(1) + "M";
+  if (v >= 1e3) return (v / 1e3).toFixed(1) + "k";
+  return String(Math.round(v));
+}
+
+function renderTrending(rows, tbody, compact, err) {
   if (!tbody) return;
-  const cols = compact ? 6 : 6;
+  const cols = 8;
   if (!rows || !rows.length) {
-    emptyPairs(tbody, cols, "No trending pairs ≥ $5k with live MC.");
+    emptyPairs(tbody, cols, err || "set GMGN_API_KEY");
     return;
   }
   const slice = compact ? rows.slice(0, 8) : rows;
@@ -175,11 +185,39 @@ function renderTrending(rows, tbody, compact) {
     <tr>
       <td>${tokenCell(t)}<div class="name">${escapeHtml(t.age || "")}</div></td>
       <td class="r">${fmtUsd(t.mc)}</td>
-      <td class="r">${fmtUsd(t.liq_show != null ? t.liq_show : t.liq2 != null ? t.liq2 : t.liq)}</td>
-      <td class="r">${fmtUsd(t.trend_vol != null ? t.trend_vol : t.vol_1h)}</td>
-      <td class="r">${escapeHtml(String(t.trend_txs != null ? t.trend_txs : (t.txs_1h || 0)))}</td>
+      <td class="r">${fmtUsd(t.ath_mc)}</td>
+      <td class="r">${fmtUsd(t.liq)}</td>
+      <td class="r">${fmtUsd(t.vol)}</td>
+      <td class="r">${escapeHtml(String(t.swaps != null ? t.swaps : "—"))}</td>
+      <td class="r">${fmtHolders(t.holders)}</td>
       <td class="r">${chgEl(t.chg)}</td>
     </tr>`).join("");
+}
+
+async function loadTrending() {
+  const w = TREND_W || "1m";
+  try {
+    const res = await fetch("/api/trending?interval=" + encodeURIComponent(w));
+    const data = await res.json();
+    TREND_ERR = data.error || "";
+    const rows = data.rows || [];
+    const meta = $("#trending-meta");
+    if (meta) meta.textContent = TREND_ERR ? TREND_ERR : ((data.source || "gmgn") + " · " + (data.interval || w) + " · " + rows.length + " tokens");
+    renderTrending(rows, $("#trending-home"), true, TREND_ERR);
+    renderTrending(rows, $("#trending-body"), false, TREND_ERR);
+    $$(".trend-btn").forEach(b => b.classList.toggle("on", b.dataset.tw === TREND_W));
+  } catch (err) {
+    console.error(err);
+    TREND_ERR = "set GMGN_API_KEY";
+    renderTrending([], $("#trending-home"), true, TREND_ERR);
+    renderTrending([], $("#trending-body"), false, TREND_ERR);
+  }
+}
+
+function startTrendPoll() {
+  if (TREND_TIMER) clearInterval(TREND_TIMER);
+  loadTrending().catch(() => {});
+  TREND_TIMER = setInterval(() => loadTrending().catch(() => {}), 20000);
 }
 
 function renderDips(rows, el) {
@@ -320,10 +358,6 @@ function paint() {
   renderPairs(migrated, $("#migrated-body-2"), { empty: "No migrated pairs ≥ $20k yet." });
   renderPairs(about, $("#about-body"), { progress: true, empty: "No about-to-migrate pairs ≥ $20k yet." });
   renderPairs(about, $("#about-body-2"), { progress: true, empty: "No about-to-migrate pairs ≥ $20k yet." });
-  const tr = (s.trending && (s.trending[TREND_W] || s.trending["1h"])) || [];
-  renderTrending(s.trending && s.trending["1h"], $("#trending-home"), true);
-  renderTrending(tr, $("#trending-body"), false);
-  $$(".trend-btn").forEach(b => b.classList.toggle("on", b.dataset.tw === TREND_W));
   renderDips(s.dips, $("#dips-home"));
   renderDips(s.dips, $("#dips-full"));
   renderXFeed({ posts: s.x_feed, error: s.x_feed_error, source: s.x_feed_source, handles: (s.x_watch || []).map(x => x.handle) });
@@ -391,11 +425,9 @@ $("#tabs").addEventListener("click", e => {
 document.addEventListener("click", e => {
   const b = e.target.closest(".trend-btn");
   if (!b) return;
-  TREND_W = b.dataset.tw || "1h";
-  const s = STATE || {};
-  const tr = (s.trending && (s.trending[TREND_W] || s.trending["1h"])) || [];
-  renderTrending(tr, $("#trending-body"), false);
+  TREND_W = b.dataset.tw || "1m";
   $$(".trend-btn").forEach(x => x.classList.toggle("on", x.dataset.tw === TREND_W));
+  loadTrending().catch(() => {});
 });
 
 async function loadXFeed() {
@@ -416,6 +448,7 @@ async function loadXFeed() {
 $("#btn-refresh").onclick = async () => {
   await loadState().catch(() => {});
   await loadXFeed().catch(() => {});
+  await loadTrending().catch(() => {});
 };
 $("#btn-wallets").onclick = () => scan("wallets");
 $("#btn-dip").onclick = () => scan("dip");
@@ -434,6 +467,6 @@ $("#agent-form").addEventListener("submit", e => {
 
 initWalletChrome();
 
-loadState().then(() => loadXFeed()).catch(err => {
+loadState().then(() => loadXFeed()).then(() => startTrendPoll()).catch(err => {
   console.error(err);
 });

@@ -7,7 +7,10 @@ import json
 import re
 import threading
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from html import unescape
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -39,14 +42,21 @@ SEL_REAL_QUOTE = "0x4f1f58fd"
 SEL_PAIR_TOKEN = "0x3de35b79"
 SEL_PAIR_DECIMALS = "0xc9b58ec7"
 SEL_GRADUATED = "0xe7c2b772"
+SEL_GRAD_THRESH = "0x8b0bc501"
+SEL_GET_LAUNCHED = "0x3cf28b5a"
 SEL_PHANTOM = "0xc57eadfc"
 RPC_TIMEOUT = 12
 LOOKBACK_BLOCKS = 30_000
 WINDOW_BLOCKS = 2_000
 VOL_LOOKBACK = 8_000
+BLOCKS_1H = 1_800
+BLOCKS_5M = 150
 MAX_PAIRS = 40
 MAX_ENRICH = 80
 MC_MIN_USD = 5000.0
+MC_TAPE_USD = 20_000.0
+ABOUT_PROGRESS = 0.70
+ABOUT_MIN = 8
 DIP_CHG = -20.0
 DIP_MC = 50_000.0
 IMG_MAX = 512 * 1024
@@ -64,9 +74,15 @@ STATE = {
     "wallet": {"address": "", "balance_usd": 0, "pnl_usd": 0},
     "safe_tape": [],
     "new_pairs": [],
+    "pairs_migrated": [],
+    "pairs_about": [],
     "dips": [],
+    "trending": {"1h": [], "5m": []},
     "wallets": [],
     "x_watch": [],
+    "x_feed": [],
+    "x_feed_error": None,
+    "x_feed_source": None,
     "cache_count": 0,
     "wallet_count": 0,
     "scan": {"dip": None, "wallets": None, "error": None},
@@ -159,6 +175,8 @@ def seed():
     with _lock:
         STATE["pons"] = pons
         STATE["x_watch"] = [{"handle": h, "status": "allow"} for h in xw.get("allowlist", [])]
+        if not STATE.get("x_feed"):
+            STATE["x_feed"] = []
         STATE["wallet_count"] = len(STATE["wallets"])
         STATE["updated_at"] = fmt_now()
         STATE["scan"]["error"] = None
@@ -484,6 +502,7 @@ def parse_launches(logs: list) -> list:
         except Exception:
             bn = 0
         prev = by_token.get(token.lower())
+        factory = (lg.get("address") or FACTORY_V2).lower()
         if prev is None or bn >= prev["bn"]:
             by_token[token.lower()] = {
                 "addr": token,
@@ -491,6 +510,7 @@ def parse_launches(logs: list) -> list:
                 "deployer": deployer,
                 "pair_token": pair,
                 "bn": bn,
+                "factory": factory,
             }
     return sorted(by_token.values(), key=lambda x: x["bn"], reverse=True)
 
@@ -517,6 +537,10 @@ def enrich_launches(launches: list, latest: int, eth_usd: float | None) -> list:
             add_call(curve, SEL_PAIR_TOKEN, "pair", i)
             add_call(curve, SEL_PAIR_DECIMALS, "pdec", i)
             add_call(curve, SEL_GRADUATED, "grad", i)
+            add_call(curve, SEL_GRAD_THRESH, "gth", i)
+        fac = row.get("factory") or FACTORY_V2
+        tok_arg = "0x" + tok[2:].lower().rjust(64, "0")
+        add_call(fac, SEL_GET_LAUNCHED + tok_arg[2:], "launch", i)
 
     results = {}
     BATCH = 8
@@ -540,10 +564,16 @@ def enrich_launches(launches: list, latest: int, eth_usd: float | None) -> list:
         print(f"[indexer] volume logs failed: {e}")
 
     vol_quote = {c.lower(): 0 for c in curves}
+    vol_1h_q = {c.lower(): 0 for c in curves}
+    vol_5m_q = {c.lower(): 0 for c in curves}
+    txs_1h = {c.lower(): 0 for c in curves}
+    txs_5m = {c.lower(): 0 for c in curves}
     first_px = {}
     last_px = {}
     first_bn = {}
     last_bn = {}
+    cut_1h = max(0, latest - BLOCKS_1H)
+    cut_5m = max(0, latest - BLOCKS_5M)
     for lg in trades:
         addr = (lg.get("address") or "").lower()
         topics = lg.get("topics") or []
@@ -569,6 +599,12 @@ def enrich_launches(launches: list, latest: int, eth_usd: float | None) -> list:
             if a:
                 px = b / a
         vol_quote[addr] = vol_quote.get(addr, 0) + quote
+        if bn >= cut_1h:
+            vol_1h_q[addr] = vol_1h_q.get(addr, 0) + quote
+            txs_1h[addr] = txs_1h.get(addr, 0) + 1
+        if bn >= cut_5m:
+            vol_5m_q[addr] = vol_5m_q.get(addr, 0) + quote
+            txs_5m[addr] = txs_5m.get(addr, 0) + 1
         if px and px > 0:
             if addr not in first_bn or bn < first_bn[addr]:
                 first_bn[addr] = bn
@@ -599,6 +635,27 @@ def enrich_launches(launches: list, latest: int, eth_usd: float | None) -> list:
         pair = word_addr(bkt.get("pair")) if bkt.get("pair") else src.get("pair_token")
         graduated = bool(u256(bkt.get("grad")))
         realq = u256(bkt.get("realq"))
+        gth = u256(bkt.get("gth"))
+        phase = None
+        launch_hex = bkt.get("launch") or "0x"
+        if launch_hex and launch_hex not in ("0x", "0x0"):
+            lh = launch_hex[2:] if launch_hex.startswith("0x") else launch_hex
+            # ABI struct words: 0-4 addrs, 5 threshold, 6 poolFee, 7 tick, 8 tax, 9 buyback, 10 phase
+            if len(lh) >= 11 * 64:
+                try:
+                    phase = int(lh[10 * 64 : 11 * 64], 16)
+                except Exception:
+                    phase = None
+                if not gth:
+                    try:
+                        gth = int(lh[5 * 64 : 6 * 64], 16)
+                    except Exception:
+                        pass
+        progress = None
+        if gth:
+            progress = min(1.0, (realq or 0) / gth)
+        phase_name = {0: "NotGraduated", 1: "Swept", 2: "PoolCreated", 3: "Rescued"}.get(phase)
+        migrated = bool(graduated) or phase in (1, 2) or (phase_name in ("Swept", "PoolCreated"))
         mc_eth = None
         mc_usd = None
         if qres and tres and supply:
@@ -616,6 +673,16 @@ def enrich_launches(launches: list, latest: int, eth_usd: float | None) -> list:
             vol_usd = None
         liq_eth = (realq or qres) / (10 ** pdec) if (realq or qres) else None
         liq_usd = (liq_eth * eth_usd) if (liq_eth is not None and eth_usd) else None
+        # GMGN-style curve liq estimate: 2 * real quote (not invented ATH/holders)
+        liq2_eth = (2 * realq / (10 ** pdec)) if realq else None
+        liq2_usd = (liq2_eth * eth_usd) if (liq2_eth is not None and eth_usd) else None
+        def _usd_from_q(q):
+            if not q:
+                return 0.0 if q == 0 else None
+            ethv = q / (10 ** pdec)
+            return round(ethv * eth_usd, 2) if eth_usd else None
+        v1h = _usd_from_q(vol_1h_q.get(curve.lower(), 0) if curve else 0)
+        v5m = _usd_from_q(vol_5m_q.get(curve.lower(), 0) if curve else 0)
         chg = None
         ck = curve.lower()
         if ck in first_px and ck in last_px and first_px[ck]:
@@ -632,18 +699,46 @@ def enrich_launches(launches: list, latest: int, eth_usd: float | None) -> list:
                 "mc": round(mc_usd, 2) if mc_usd is not None else None,
                 "mc_eth": round(mc_eth, 6) if mc_eth is not None else None,
                 "vol": round(vol_usd, 2) if vol_usd is not None else None,
+                "vol_1h": v1h,
+                "vol_5m": v5m,
+                "txs_1h": txs_1h.get(curve.lower(), 0) if curve else 0,
+                "txs_5m": txs_5m.get(curve.lower(), 0) if curve else 0,
                 "liq": round(liq_usd, 2) if liq_usd is not None else None,
+                "liq2": round(liq2_usd, 2) if liq2_usd is not None else None,
                 "chg": round(chg, 2) if chg is not None else None,
                 "age": age_label(src["bn"], latest),
                 "bn": src["bn"],
                 "logo": logo,
                 "socials": socials,
                 "graduated": graduated,
+                "migrated": migrated,
+                "phase": phase_name or phase,
+                "progress": round(progress, 4) if progress is not None else None,
+                "threshold_eth": round(gth / (10 ** pdec), 6) if gth else None,
                 "raised_eth": round(liq_eth, 6) if liq_eth is not None else None,
             }
         )
     return rows
 
+
+
+def pick_trending(rows: list, window: str = "1h") -> list:
+    """Rank by recent curve buy+sell volume then tx count. mc >= $5k. No invented ATH/holders."""
+    vol_k = "vol_1h" if window != "5m" else "vol_5m"
+    tx_k = "txs_1h" if window != "5m" else "txs_5m"
+    pool = []
+    for r in rows:
+        mc = r.get("mc")
+        if mc is None or mc < MC_MIN_USD:
+            continue
+        item = dict(r)
+        item["trend_vol"] = r.get(vol_k) if r.get(vol_k) is not None else 0
+        item["trend_txs"] = r.get(tx_k) or 0
+        item["trend_window"] = window
+        item["liq_show"] = r.get("liq2") if r.get("liq2") is not None else r.get("liq")
+        pool.append(item)
+    pool.sort(key=lambda r: (r.get("trend_vol") or 0, r.get("trend_txs") or 0), reverse=True)
+    return pool[:MAX_PAIRS]
 
 
 def pick_dips(rows: list) -> list:
@@ -694,6 +789,22 @@ def wallets_from_launches(launches: list, rows: list) -> list:
     return out
 
 
+def split_tapes(rows: list) -> tuple[list, list]:
+    """Migrated vs about-to-migrate. Both require live mc_usd >= $20k. No fake mcap."""
+    priced = [r for r in rows if r.get("mc") is not None and r["mc"] >= MC_TAPE_USD]
+    migrated = [r for r in priced if r.get("migrated") or r.get("graduated")]
+    unfinished = [r for r in priced if not (r.get("migrated") or r.get("graduated"))]
+    about = [r for r in unfinished if (r.get("progress") or 0) >= ABOUT_PROGRESS]
+    if len(about) < ABOUT_MIN:
+        have = {(r.get("addr") or "").lower() for r in about}
+        extra = [r for r in unfinished if (r.get("addr") or "").lower() not in have]
+        extra.sort(key=lambda r: (r.get("progress") is not None, r.get("progress") or 0), reverse=True)
+        about = about + extra[: max(0, ABOUT_MIN - len(about))]
+    migrated.sort(key=lambda r: (r.get("bn") or 0), reverse=True)
+    about.sort(key=lambda r: (r.get("progress") or 0, r.get("bn") or 0), reverse=True)
+    return migrated[:MAX_PAIRS], about[:MAX_PAIRS]
+
+
 def apply_mc_filter(rows: list, eth_usd: float | None) -> tuple[list, str | None]:
     priced = [r for r in rows if r.get("mc") is not None]
     unpriced = [r for r in rows if r.get("mc") is None]
@@ -732,11 +843,18 @@ def index_launches() -> dict:
             eth_usd, eth_src = fetch_eth_usd()
             rows = enrich_launches(launches, latest, eth_usd)
             filtered, ferr = apply_mc_filter(rows, eth_usd)
+            migrated, about = split_tapes(rows)
             dips = pick_dips(rows)
+            trending_1h = pick_trending(rows, "1h")
+            trending_5m = pick_trending(rows, "5m")
             wallets = wallets_from_launches(launches, rows)
+            shown_rows = migrated + about
             with _lock:
-                STATE["new_pairs"] = filtered
+                STATE["new_pairs"] = shown_rows
+                STATE["pairs_migrated"] = migrated
+                STATE["pairs_about"] = about
                 STATE["dips"] = dips
+                STATE["trending"] = {"1h": trending_1h, "5m": trending_5m}
                 STATE["wallets"] = wallets
                 STATE["wallet_count"] = len(wallets)
                 STATE["updated_at"] = fmt_now()
@@ -745,20 +863,23 @@ def index_launches() -> dict:
                 if ferr:
                     STATE["scan"]["error"] = ferr
                 else:
-                    STATE["scan"]["error"] = None if (filtered or logs) else STATE["scan"].get("error")
+                    STATE["scan"]["error"] = None if (shown_rows or logs) else STATE["scan"].get("error")
             persist_cache()
             print(
                 f"[indexer] {len(logs)} TokenLaunched logs -> {indexed_n} launches "
-                f"-> {len(filtered)} after ${int(MC_MIN_USD)} filter "
-                f"dips={len(dips)} wallets={len(wallets)} "
+                f"-> migrated={len(migrated)} about={len(about)} (>=${int(MC_TAPE_USD)}) "
+                f"dips={len(dips)} trend1h={len(trending_1h)} wallets={len(wallets)} "
                 f"(eth_usd={eth_usd} src={eth_src} latest={latest})"
             )
             return {
                 "ok": True,
                 "logs": len(logs),
                 "indexed": indexed_n,
-                "shown": len(filtered),
+                "shown": len(shown_rows),
+                "migrated": len(migrated),
+                "about": len(about),
                 "dips": len(dips),
+                "trending": len(trending_1h),
                 "wallets": len(wallets),
                 "latest": latest,
                 "eth_usd": eth_usd,
@@ -790,7 +911,8 @@ def run_scan(kind: str) -> dict:
     shown = result.get("shown")
     indexed = result.get("indexed")
     msg = (
-        f"indexed {indexed} launches, {shown} after $5k filter, "
+        f"indexed {indexed} launches, {result.get('migrated') or 0} migrated / "
+        f"{result.get('about') or 0} about-to (>=${int(MC_TAPE_USD)}), "
         f"{result.get('dips') or 0} dips, {result.get('wallets') or 0} deployer wallets"
     )
     if kind == "wallets":
@@ -830,7 +952,7 @@ def classify_addr(message: str, addr: str) -> str:
 def pet_tokens():
     keys = ("cat", "dog", "pet", "meme", "cashcat", "r0b")
     out = []
-    for t in STATE.get("safe_tape", []) + STATE.get("new_pairs", []):
+    for t in STATE.get("safe_tape", []) + STATE.get("new_pairs", []) + STATE.get("pairs_migrated", []) + STATE.get("pairs_about", []):
         blob = f"{t.get('sym','')} {t.get('name','')}".lower()
         if any(k in blob for k in keys) or t.get("sym", "").upper() in ("CASHCAT", "R0B"):
             item = dict(t)
@@ -871,7 +993,7 @@ def agent_reply(message: str) -> dict:
     for addr in addrs:
         kind = classify_addr(msg, addr)
         hit = None
-        for t in STATE.get("safe_tape", []) + STATE.get("new_pairs", []):
+        for t in STATE.get("safe_tape", []) + STATE.get("new_pairs", []) + STATE.get("pairs_migrated", []) + STATE.get("pairs_about", []):
             if t.get("addr", "").lower() == addr.lower():
                 hit = dict(t)
                 break
@@ -986,6 +1108,192 @@ def proxy_image(u: str) -> tuple[bytes, str] | tuple[None, str]:
     return data, ctype
 
 
+
+_xfeed_cache = {"at": 0.0, "posts": [], "error": None, "source": None, "handles": []}
+XFEED_TTL = 60
+NITTER_HOSTS = (
+    "https://nitter.net",
+    "https://nitter.poast.org",
+    "https://nitter.privacydev.net",
+    "https://xcancel.com",
+)
+XFEED_UA = "Mozilla/5.0 (compatible; HOODRADAR/2; +https://github.com/YAN-XBT/HOODRADAR)"
+
+
+def http_bytes(url: str, timeout: int = 12) -> bytes:
+    req = Request(url, headers={"User-Agent": XFEED_UA, "Accept": "application/rss+xml, application/xml, text/xml, */*"})
+    with urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+
+def _strip_html(s: str) -> str:
+    s = unescape(s or "")
+    s = re.sub(r"(?is)<br\s*/?>", "\n", s)
+    s = re.sub(r"(?is)<img[^>]*>", "", s)
+    s = re.sub(r"(?is)</p>", "\n", s)
+    s = re.sub(r"(?is)<[^>]+>", "", s)
+    return re.sub(r"\n{3,}", "\n\n", s).strip()
+
+
+def _rss_ns(tag: str) -> str:
+    if "}" in tag:
+        return tag.split("}", 1)[1]
+    return tag
+
+
+def parse_rss_items(xml_bytes: bytes, handle: str) -> list:
+    root = ET.fromstring(xml_bytes)
+    items = []
+    channel_title = ""
+    for el in root.iter():
+        if _rss_ns(el.tag) == "title" and not channel_title:
+            channel_title = (el.text or "").strip()
+            break
+    display = channel_title.split("/")[0].strip() if channel_title else handle
+    for item in root.iter():
+        if _rss_ns(item.tag) != "item":
+            continue
+        title = desc = link = guid = pub = media = ""
+        for child in list(item):
+            n = _rss_ns(child.tag)
+            if n == "title" and child.text:
+                title = child.text
+            elif n in ("description", "content") and (child.text or list(child)):
+                raw = child.text or ""
+                if not raw and list(child):
+                    raw = "".join(ET.tostring(c, encoding="unicode") for c in list(child))
+                desc = raw
+            elif n == "link" and (child.text or child.get("href")):
+                link = (child.text or child.get("href") or "").strip()
+            elif n == "guid" and child.text:
+                guid = child.text.strip()
+            elif n in ("pubDate", "published", "date") and child.text:
+                pub = child.text.strip()
+            elif n in ("content", "thumbnail") and child.get("url"):
+                media = child.get("url")
+            elif n == "enclosure" and (child.get("url") or "") and "image" in (child.get("type") or "image"):
+                media = child.get("url")
+        # media from html
+        blob = desc or title or ""
+        if not media:
+            m = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', blob, re.I)
+            if m:
+                media = m.group(1)
+        text = _strip_html(desc or title)
+        if title and title.strip() and title.strip() not in text:
+            # nitter often puts tweet in description; skip duplicate titles like "handle: ..."
+            pass
+        ts = 0.0
+        iso = None
+        if pub:
+            try:
+                dt = parsedate_to_datetime(pub)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                ts = dt.timestamp()
+                iso = dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            except Exception:
+                try:
+                    dt = datetime.fromisoformat(pub.replace("Z", "+00:00"))
+                    ts = dt.timestamp()
+                    iso = dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except Exception:
+                    ts = 0.0
+        status_id = None
+        for cand in (link, guid):
+            m = re.search(r"/status(?:es)?/(\d+)", cand or "")
+            if m:
+                status_id = m.group(1)
+                break
+        href = f"https://x.com/{handle}/status/{status_id}" if status_id else f"https://x.com/{handle}"
+        if not text:
+            continue
+        items.append({
+            "handle": handle,
+            "name": display or handle,
+            "text": text,
+            "ts": ts,
+            "iso": iso,
+            "id": status_id,
+            "url": href,
+            "media": media or None,
+        })
+    return items
+
+
+def _fetch_handle_rss(handle: str) -> tuple[list, str | None]:
+    urls = [f"{h}/{handle}/rss" for h in NITTER_HOSTS]
+    urls.append(f"https://rsshub.app/twitter/user/{handle}")
+    urls.append(f"https://rsshub.app/twitter/user/{handle}/")
+    last_err = None
+    for url in urls:
+        try:
+            raw = http_bytes(url, timeout=10)
+            if not raw or len(raw) < 80:
+                last_err = f"empty {url}"
+                continue
+            low = raw[:200].lower()
+            if b"<rss" not in low and b"<feed" not in low and b"xml" not in low:
+                last_err = f"not rss {url}"
+                continue
+            items = parse_rss_items(raw, handle)
+            if items:
+                return items, url
+            last_err = f"no items {url}"
+        except Exception as e:
+            last_err = f"{url}: {e}"
+            continue
+    return [], last_err
+
+
+def get_x_feed(force: bool = False) -> dict:
+    now = time.time()
+    with _lock:
+        cached_ok = (now - _xfeed_cache["at"]) < XFEED_TTL and _xfeed_cache["at"] > 0
+        if cached_ok and not force:
+            return {
+                "posts": list(_xfeed_cache["posts"]),
+                "error": _xfeed_cache["error"],
+                "source": _xfeed_cache["source"],
+                "handles": list(_xfeed_cache["handles"]),
+                "cached": True,
+            }
+        xw = load_json(CONFIG / "x-watch.json", {"allowlist": []})
+        handles = [h.strip().lstrip("@") for h in xw.get("allowlist", []) if h and str(h).strip()]
+    merged = []
+    sources = []
+    errors = []
+    for h in handles:
+        items, src = _fetch_handle_rss(h)
+        if items:
+            merged.extend(items)
+            sources.append(src)
+        elif src:
+            errors.append(f"{h}: {src}")
+    merged.sort(key=lambda p: p.get("ts") or 0, reverse=True)
+    posts = merged[:40]
+    err = None
+    source = None
+    if posts:
+        # unique hosts that worked
+        hosts = []
+        for s in sources:
+            try:
+                hosts.append(urlparse(s).netloc + urlparse(s).path.split("/twitter")[0][:24])
+            except Exception:
+                hosts.append(s)
+        source = ", ".join(dict.fromkeys(hosts))
+    else:
+        err = "X feed unreachable (no API key)"
+    with _lock:
+        _xfeed_cache.update({"at": now, "posts": posts, "error": err, "source": source, "handles": handles})
+        STATE["x_feed"] = posts
+        STATE["x_feed_error"] = err
+        STATE["x_feed_source"] = source
+        STATE["x_watch"] = [{"handle": h, "status": "allow"} for h in handles]
+    return {"posts": posts, "error": err, "source": source, "handles": handles, "cached": False}
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print(f"[{fmt_now()}] {self.address_string()} {fmt % args}")
@@ -1017,6 +1325,9 @@ class Handler(BaseHTTPRequestHandler):
                 snap = json.loads(json.dumps(STATE))
             snap["updated_at"] = snap.get("updated_at") or fmt_now()
             return self._json(200, snap)
+        if path == "/api/xfeed":
+            feed = get_x_feed(force=False)
+            return self._json(200, feed)
         if path == "/api/img":
             qs = parse_qs(parsed.query)
             u = (qs.get("u") or [""])[0]
@@ -1082,6 +1393,7 @@ def main():
     print(f"  logo={logo.is_file()} spark={spark.is_file()}")
     t = threading.Thread(target=index_launches, name="pons-index", daemon=True)
     t.start()
+    threading.Thread(target=lambda: get_x_feed(force=True), name="x-feed", daemon=True).start()
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(f"  http://127.0.0.1:{PORT}/")
     try:

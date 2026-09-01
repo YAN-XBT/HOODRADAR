@@ -226,3 +226,26 @@ tr:hover td { background: #111; }
 .socs { display: flex; gap: 6px; margin-top: 4px; flex-wrap: wrap; }
 .soc { font-size: 10px; color: var(--muted); border: 1px solid #2a2a2a; padding: 1px 5px; }
 .soc:hover { color: var(--neon); border-color: var(--neon); }
+
+.trend-tog { display:flex; gap:8px; margin-top:8px; }
+.trend-btn.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+.xfeed { padding: 8px 12px 16px; display:flex; flex-direction:column; gap:10px; }
+.xfeed-card { background:#050505; }
+a.x-card {
+  display:flex; gap:12px; padding:12px 10px; border-bottom:1px solid #161616;
+  color: inherit; text-decoration:none;
+}
+a.x-card:hover { background:#0c0c0c; }
+.x-av {
+  width:36px; height:36px; flex:0 0 36px; border-radius:50%;
+  background:#141414; border:1px solid #222; display:flex; align-items:center; justify-content:center;
+  font-size:13px; font-weight:700; color:#c8c8c8;
+}
+.x-body { min-width:0; flex:1; }
+.x-head { display:flex; gap:8px; align-items:baseline; flex-wrap:wrap; font-size:12px; }
+.x-name { font-weight:700; color:#eee; }
+.x-handle { color:#888; }
+.x-time { color:#9dff8a; margin-left:auto; font-size:11px; }
+.x-text { margin-top:6px; font-size:13px; line-height:1.45; color:#ddd; white-space:pre-wrap; word-break:break-word; }
+.x-media { margin-top:8px; max-width:100%; max-height:180px; object-fit:cover; border:1px solid #1a1a1a; }

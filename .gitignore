@@ -15,3 +15,5 @@ cron/cache/*
 !cron/cache/.gitkeep
 *.log
 .DS_Store
+
+config/gmgn.json

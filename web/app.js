@@ -1,6 +1,9 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
+const LS_KEY = "hoodradar.walletPanel";
+const TOAST_MSG = "scan queued (indexer not live yet)";
+
 function fmtUsd(n) {
   if (n == null || Number.isNaN(n)) return "—";
   const abs = Math.abs(n);
@@ -8,28 +11,48 @@ function fmtUsd(n) {
   if (abs >= 1e3) return "$" + (n / 1e3).toFixed(1) + "k";
   return "$" + Number(n).toFixed(0);
 }
+
 function shortAddr(a) {
   if (!a) return "—";
   return a.slice(0, 6) + "…" + a.slice(-4);
 }
+
 function chgEl(v) {
   if (v == null) return "—";
   const cls = v >= 0 ? "up" : "dn";
   const s = (v >= 0 ? "+" : "") + Number(v).toFixed(1) + "%";
   return `<span class="${cls}">${s}</span>`;
 }
+
+function tokenCell(t) {
+  return `<div class="sym">$${escapeHtml(t.sym || "?")}</div>
+    <div class="name">${escapeHtml(t.name || "")}</div>
+    <div class="addr">${escapeHtml(shortAddr(t.addr))}</div>`;
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
-function tokenCell(t) {
-  return `<div class="sym">$${escapeHtml(t.sym || "?")}</div><div class="name">${escapeHtml(t.name || "")}</div><div class="addr">${escapeHtml(shortAddr(t.addr))}</div>`;
+
+function emptyPairs(tbody) {
+  tbody.innerHTML = `<tr><td colspan="5" class="empty">No new pairs yet.</td></tr>`;
 }
-function renderTape(rows, tbody) {
-  tbody.innerHTML = (rows || []).map(t => `<tr><td>${tokenCell(t)}</td><td class="r">${fmtUsd(t.mc)}</td><td class="r">${fmtUsd(t.vol)}</td><td class="r">${chgEl(t.chg)}</td><td class="r">${escapeHtml(t.safety || "—")}</td></tr>`).join("");
-}
+
 function renderPairs(rows, tbody) {
-  tbody.innerHTML = (rows || []).map(t => `<tr><td>${tokenCell(t)}</td><td class="r">${fmtUsd(t.mc)}</td><td class="r">${fmtUsd(t.vol)}</td><td class="r">${chgEl(t.chg)}</td><td class="r">${escapeHtml(t.age || "—")}</td></tr>`).join("");
+  if (!rows || !rows.length) {
+    emptyPairs(tbody);
+    return;
+  }
+  tbody.innerHTML = rows.map(t => `
+    <tr>
+      <td>${tokenCell(t)}</td>
+      <td class="r">${fmtUsd(t.mc)}</td>
+      <td class="r">${fmtUsd(t.vol)}</td>
+      <td class="r">${chgEl(t.chg)}</td>
+      <td class="r">${escapeHtml(t.age || "—")}</td>
+    </tr>`).join("");
 }
+
 function renderDips(rows, el) {
   if (!rows || !rows.length) {
     el.className = "empty";
@@ -37,41 +60,164 @@ function renderDips(rows, el) {
     return;
   }
   el.className = "";
-  el.innerHTML = `<table><thead><tr><th>Token</th><th class="r">MC</th><th class="r">Vol</th><th class="r">Chg</th></tr></thead><tbody>${rows.map(t => `<tr><td>${tokenCell(t)}</td><td class="r">${fmtUsd(t.mc)}</td><td class="r">${fmtUsd(t.vol)}</td><td class="r">${chgEl(t.chg)}</td></tr>`).join("")}</tbody></table>`;
+  el.innerHTML = `<table><thead><tr><th>Token</th><th class="r">MC</th><th class="r">Vol</th><th class="r">Chg</th></tr></thead>
+    <tbody>${rows.map(t => `<tr><td>${tokenCell(t)}</td><td class="r">${fmtUsd(t.mc)}</td><td class="r">${fmtUsd(t.vol)}</td><td class="r">${chgEl(t.chg)}</td></tr>`).join("")}</tbody></table>`;
 }
+
 let STATE = {};
+let toastTimer = 0;
+
+function showToast(text) {
+  const el = $("#toast");
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 2600);
+}
+
+function loadPanelGeom() {
+  try {
+    return JSON.parse(localStorage.getItem(LS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function savePanelGeom(extra) {
+  const panel = $("#wallet-float");
+  const prev = loadPanelGeom();
+  const next = {
+    open: !panel.hidden,
+    left: panel.style.left || prev.left || "",
+    top: panel.style.top || prev.top || "",
+    width: panel.style.width || prev.width || "",
+    height: panel.style.height || prev.height || "",
+    ...extra,
+  };
+  localStorage.setItem(LS_KEY, JSON.stringify(next));
+}
+
+function applyPanelGeom() {
+  const panel = $("#wallet-float");
+  const g = loadPanelGeom();
+  panel.style.left = g.left || "24px";
+  panel.style.top = g.top || "96px";
+  if (g.width) panel.style.width = g.width;
+  if (g.height) panel.style.height = g.height;
+  setPanelOpen(!!g.open, false);
+}
+
+function setPanelOpen(open, persist = true) {
+  const panel = $("#wallet-float");
+  panel.hidden = !open;
+  $("#btn-pnl").classList.toggle("on", open);
+  if (persist) savePanelGeom({ open });
+}
+
+function initWalletChrome() {
+  const panel = $("#wallet-float");
+  const drag = $("#wallet-drag");
+  const resize = $("#wallet-resize");
+
+  applyPanelGeom();
+
+  $("#btn-pnl").onclick = () => setPanelOpen(panel.hidden);
+  $("#wallet-close").onclick = () => setPanelOpen(false);
+
+  let dragState = null;
+  drag.addEventListener("pointerdown", e => {
+    if (e.target.closest(".x")) return;
+    e.preventDefault();
+    drag.setPointerCapture(e.pointerId);
+    const rect = panel.getBoundingClientRect();
+    dragState = { dx: e.clientX - rect.left, dy: e.clientY - rect.top };
+  });
+  drag.addEventListener("pointermove", e => {
+    if (!dragState) return;
+    const x = Math.max(0, e.clientX - dragState.dx);
+    const y = Math.max(0, e.clientY - dragState.dy);
+    panel.style.left = x + "px";
+    panel.style.top = y + "px";
+  });
+  const endDrag = () => {
+    if (!dragState) return;
+    dragState = null;
+    savePanelGeom();
+  };
+  drag.addEventListener("pointerup", endDrag);
+  drag.addEventListener("pointercancel", endDrag);
+
+  let rs = null;
+  resize.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    e.stopPropagation();
+    resize.setPointerCapture(e.pointerId);
+    const rect = panel.getBoundingClientRect();
+    rs = { x: e.clientX, y: e.clientY, w: rect.width, h: rect.height };
+  });
+  resize.addEventListener("pointermove", e => {
+    if (!rs) return;
+    const w = Math.max(180, rs.w + (e.clientX - rs.x));
+    const h = Math.max(120, rs.h + (e.clientY - rs.y));
+    panel.style.width = w + "px";
+    panel.style.height = h + "px";
+  });
+  const endRs = () => {
+    if (!rs) return;
+    rs = null;
+    savePanelGeom();
+  };
+  resize.addEventListener("pointerup", endRs);
+  resize.addEventListener("pointercancel", endRs);
+}
+
 async function loadState() {
   const res = await fetch("/api/state");
   STATE = await res.json();
   paint();
 }
+
 function paint() {
   const s = STATE || {};
-  $("#st-online").textContent = s.online ? "online" : "offline";
-  $("#st-time").textContent = s.updated_at || "—";
-  $("#st-wallets").textContent = "wallets " + (s.wallet_count ?? (s.wallets || []).length);
-  $("#st-cache").textContent = (s.cache_count ?? 0) + " cache";
   const w = s.wallet || {};
   $("#w-addr").textContent = shortAddr(w.address);
   $("#w-bal").textContent = fmtUsd(w.balance_usd);
   const pnl = w.pnl_usd || 0;
-  $("#w-pnl").textContent = pnl === 0 ? "+$0" : ((pnl >= 0 ? "+" : "") + fmtUsd(pnl));
-  renderTape(s.safe_tape, $("#tape-body"));
+  $("#w-pnl").textContent = pnl === 0 ? "+$0" : (pnl >= 0 ? "+" : "") + fmtUsd(pnl);
+
   renderPairs(s.new_pairs, $("#pairs-body"));
   renderPairs(s.new_pairs, $("#pairs-body-2"));
   renderDips(s.dips, $("#dips-home"));
   renderDips(s.dips, $("#dips-full"));
-  $("#wallets-list").innerHTML = (s.wallets || []).map(w => `<div class="row2"><span>${escapeHtml(shortAddr(w.address))} · ${escapeHtml(w.label || "")}</span><span>${fmtUsd(w.usd)}</span></div>`).join("") || `<div class="empty">No wallets.</div>`;
-  $("#xwatch-list").innerHTML = (s.x_watch || []).map(x => `<div class="row2"><span>@${escapeHtml(x.handle)}</span><span class="up">${escapeHtml(x.status || "allow")}</span></div>`).join("") || `<div class="empty">No handles.</div>`;
+
+  $("#wallets-list").innerHTML = (s.wallets || []).map(row =>
+    `<div class="row2"><span>${escapeHtml(shortAddr(row.address))} · ${escapeHtml(row.label || "")}</span><span>${fmtUsd(row.usd)} <span class="up">${row.pnl >= 0 ? "+" : ""}${fmtUsd(row.pnl)}</span></span></div>`
+  ).join("") || `<div class="empty">No wallets.</div>`;
+
+  $("#xwatch-list").innerHTML = (s.x_watch || []).map(x =>
+    `<div class="row2"><span>@${escapeHtml(x.handle)}</span><span class="up">${escapeHtml(x.status || "allow")}</span></div>`
+  ).join("") || `<div class="empty">No handles.</div>`;
 }
+
 function showTab(id) {
   $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === id));
   $$(".panel").forEach(p => p.classList.toggle("active", p.id === "panel-" + id));
 }
+
 async function scan(kind) {
-  await fetch("/api/scan", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ kind }) });
-  await loadState();
+  showToast(TOAST_MSG);
+  try {
+    await fetch("/api/scan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind }),
+    });
+  } catch (err) {
+    console.error(err);
+  }
+  await loadState().catch(() => {});
 }
+
 function addMsg(role, text, results) {
   const log = $("#agent-log");
   const div = document.createElement("div");
@@ -79,7 +225,9 @@ function addMsg(role, text, results) {
   let extra = "";
   if (results && results.length) {
     extra = "<ul class='results'>" + results.map(r => {
-      const label = r.kind === "wallet" ? `wallet ${shortAddr(r.address || r.addr)}` : `$${r.sym || "?"} ${shortAddr(r.addr)}`;
+      const label = r.kind === "wallet"
+        ? `wallet ${shortAddr(r.address || r.addr)}`
+        : `$${r.sym || "?"} ${shortAddr(r.addr)}`;
       return `<li>${escapeHtml(label)} — ${escapeHtml(r.note || "")}</li>`;
     }).join("") + "</ul>";
   }
@@ -87,20 +235,31 @@ function addMsg(role, text, results) {
   log.appendChild(div);
   log.scrollTop = log.scrollHeight;
 }
+
 async function askAgent(message) {
   addMsg("user", message);
-  const res = await fetch("/api/agent", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message }) });
+  const res = await fetch("/api/agent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+  });
   const data = await res.json();
   addMsg("agent", data.reply || "", data.results);
 }
+
 $("#tabs").addEventListener("click", e => {
   const t = e.target.closest(".tab");
   if (t) showTab(t.dataset.tab);
 });
+
 $("#btn-refresh").onclick = () => loadState();
 $("#btn-wallets").onclick = () => scan("wallets");
 $("#btn-dip").onclick = () => scan("dip");
-$("#btn-agent").onclick = () => { showTab("agent"); $("#agent-input").focus(); };
+$("#btn-agent").onclick = () => {
+  showTab("agent");
+  $("#agent-input").focus();
+};
+
 $("#agent-form").addEventListener("submit", e => {
   e.preventDefault();
   const v = $("#agent-input").value.trim();
@@ -108,4 +267,9 @@ $("#agent-form").addEventListener("submit", e => {
   $("#agent-input").value = "";
   askAgent(v);
 });
-loadState().catch(err => { $("#st-online").textContent = "offline"; console.error(err); });
+
+initWalletChrome();
+
+loadState().catch(err => {
+  console.error(err);
+});

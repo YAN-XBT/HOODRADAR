@@ -2,8 +2,6 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 
 const LS_KEY = "hoodradar.walletPanel";
-const TOAST_MSG = "scan queued (indexer not live yet)";
-
 function fmtUsd(n) {
   if (n == null || Number.isNaN(n)) return "—";
   const abs = Math.abs(n);
@@ -205,15 +203,17 @@ function showTab(id) {
 }
 
 async function scan(kind) {
-  showToast(TOAST_MSG);
   try {
-    await fetch("/api/scan", {
+    const res = await fetch("/api/scan", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ kind }),
     });
+    const data = await res.json().catch(() => ({}));
+    showToast(data.message || data.error || "scan done");
   } catch (err) {
     console.error(err);
+    showToast("scan failed");
   }
   await loadState().catch(() => {});
 }

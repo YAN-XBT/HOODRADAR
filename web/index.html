@@ -1,151 +1,269 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>HOODRADAR · local desk</title>
-  <link rel="stylesheet" href="/styles.css?v=8" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HOODRADAR</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+  <link rel="icon" type="image/svg+xml" href="/spark.svg">
 </head>
 <body>
-  <div class="bg"></div>
-
-  <header class="top">
-    <div class="brand">
-      <div class="logo">HOOD<span>RADAR</span></div>
-      <div class="sub">Robinhood Chain · research only · localhost</div>
+  <div class="app">
+    <div class="radar-stage" aria-hidden="true">
+      <svg class="radar-svg" viewBox="0 0 800 800" preserveAspectRatio="xMidYMid slice">
+        <defs>
+          <radialGradient id="radarPulse" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stop-color="#163a16" stop-opacity="0.10"/>
+            <stop offset="55%" stop-color="#163a16" stop-opacity="0.03"/>
+            <stop offset="100%" stop-color="#163a16" stop-opacity="0"/>
+          </radialGradient>
+          <linearGradient id="sweepGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#1a3d1a" stop-opacity="0"/>
+            <stop offset="70%" stop-color="#1a3d1a" stop-opacity="0.04"/>
+            <stop offset="100%" stop-color="#1a3d1a" stop-opacity="0.10"/>
+          </linearGradient>
+        </defs>
+        <circle class="radar-pulse" cx="400" cy="400" r="360" fill="url(#radarPulse)"/>
+        <g class="radar-rings" fill="none" stroke="#163a16" stroke-width="0.8">
+          <circle cx="400" cy="400" r="80" opacity="0.35"/>
+          <circle cx="400" cy="400" r="160" opacity="0.26"/>
+          <circle cx="400" cy="400" r="240" opacity="0.20"/>
+          <circle cx="400" cy="400" r="320" opacity="0.15"/>
+          <circle cx="400" cy="400" r="380" opacity="0.12"/>
+        </g>
+        <g class="radar-cross" stroke="#163a16" stroke-width="0.6" opacity="0.18">
+          <line x1="400" y1="20" x2="400" y2="780"/>
+          <line x1="20" y1="400" x2="780" y2="400"/>
+        </g>
+        <g class="radar-sweep">
+          <animateTransform attributeName="transform" type="rotate" from="0 400 400" to="360 400 400" dur="8s" repeatCount="indefinite"/>
+          <path d="M 400 400 L 400 20 A 380 380 0 0 1 590 72 Z" fill="url(#sweepGrad)"/>
+          <line x1="400" y1="400" x2="400" y2="20" stroke="#1a3d1a" stroke-width="1" opacity="0.45"/>
+        </g>
+        <circle cx="400" cy="400" r="2.5" fill="#2a6b2a"/>
+      </svg>
     </div>
-    <div class="actions">
-      <button id="btn-refresh" class="btn ghost" type="button">Refresh</button>
-      <button id="btn-wallets" class="btn" type="button">Scan wallets</button>
-      <button id="btn-hot" class="btn" type="button">Run hot</button>
-      <button id="btn-dip" class="btn" type="button">Run dip</button>
-      <button id="btn-smart" class="btn" type="button">Run smart</button>
-      <button id="btn-all" class="btn primary" type="button">Run all</button>
+
+    <header class="topbar">
+      <div class="brand">
+        <img src="/spark.svg" alt="" width="28" height="28">
+        <div class="brand-name">HOODRADAR</div>
+      </div>
+      <div class="actions">
+        <button class="btn" id="btn-refresh" type="button">REFRESH</button>
+        <button class="btn" id="btn-wallets" type="button">SCAN WALLETS</button>
+        <button class="btn" id="btn-dip" type="button">RUN DIP</button>
+        <button class="btn btn-solid" id="btn-agent" type="button">ASK AGENT</button>
+      </div>
+    </header>
+
+    <nav class="tabs" id="tabs">
+      <button class="tab active" data-tab="home" type="button">HOME</button>
+      <button class="tab" data-tab="dips" type="button">SAFE DIPS</button>
+      <button class="tab" data-tab="wallets" type="button">WALLETS</button>
+      <button class="tab" data-tab="pairs" type="button">NEW PAIRS</button>
+      <button class="tab" data-tab="trending" type="button">TRENDING</button>
+      <button class="tab" data-tab="xwatch" type="button">X WATCH</button>
+      <button class="tab" data-tab="agent" type="button">AGENT</button>
+    </nav>
+
+    <main class="main">
+      <section class="panel active" id="panel-home">
+        <div class="home-grid">
+          <div class="card">
+            <div class="card-h">
+              <h2>MIGRATED <span class="tag">≥$20k</span></h2>
+              <div class="sub">Left the bonding curve · Swept / PoolCreated</div>
+              <div class="meta">mc live · no fake mcap</div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Token</th>
+                    <th class="r">MC</th>
+                    <th class="r">Vol</th>
+                    <th class="r">Chg</th>
+                    <th class="r">Age</th>
+                  </tr>
+                </thead>
+                <tbody id="migrated-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-h">
+              <h2>ABOUT TO MIGRATE <span class="tag">≥70%</span></h2>
+              <div class="sub">Curve progress vs graduation threshold · mc ≥ $20k</div>
+            </div>
+            <div style="overflow-x:auto;">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Token</th>
+                    <th class="r">Prog</th>
+                    <th class="r">MC</th>
+                    <th class="r">Vol</th>
+                    <th class="r">Chg</th>
+                    <th class="r">Age</th>
+                  </tr>
+                </thead>
+                <tbody id="about-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <div class="card-h">
+            <h2>TRENDING <span class="tag">1h vol</span></h2>
+            <div class="sub">Curve buy+sell · mc ≥ $5k · research only</div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead><tr><th>Token</th><th class="r">MC</th><th class="r">Liq</th><th class="r">1h Vol</th><th class="r">1h TXs</th><th class="r">Chg</th></tr></thead>
+              <tbody id="trending-home"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <div class="card-h">
+            <h2>DIPS <span class="tag red">≥20% dump</span></h2>
+            <div class="sub">Pullbacks · research only</div>
+          </div>
+          <div id="dips-home" class="empty">No dip setups now. Filters: drop ≤ -20%, mcap ≥ $50k, liq ≥ $15k.</div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-dips">
+        <div class="card">
+          <div class="card-h">
+            <h2>SAFE DIPS <span class="tag red">≥20% dump</span></h2>
+            <div class="sub">Filters: drop ≤ -20%, mcap ≥ $50k, liq ≥ $15k</div>
+          </div>
+          <div id="dips-full" class="empty">No dip setups now. Filters: drop ≤ -20%, mcap ≥ $50k, liq ≥ $15k.</div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-wallets">
+        <div class="card">
+          <div class="card-h"><h2>WALLETS</h2><div class="sub">Tracked EOAs · research only</div></div>
+          <div class="list" id="wallets-list"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-trending">
+        <div class="card">
+          <div class="card-h">
+            <h2>TRENDING</h2>
+            <div class="sub">PONS curve volume · no buy buttons · ATH/holders not available on-chain here</div>
+            <div class="meta trend-tog">
+              <button class="btn trend-btn on" type="button" data-tw="1h">1H</button>
+              <button class="btn trend-btn" type="button" data-tw="5m">5M</button>
+            </div>
+          </div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Token / Age</th>
+                  <th class="r">MC</th>
+                  <th class="r">Liq</th>
+                  <th class="r">Vol</th>
+                  <th class="r">TXs</th>
+                  <th class="r">Chg</th>
+                </tr>
+              </thead>
+              <tbody id="trending-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-pairs">
+        <div class="card">
+          <div class="card-h"><h2>MIGRATED</h2><div class="sub">Graduated / Swept / PoolCreated · mc ≥ $20k</div></div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead><tr><th>Token</th><th class="r">MC</th><th class="r">Vol</th><th class="r">Chg</th><th class="r">Age</th></tr></thead>
+              <tbody id="migrated-body-2"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card" style="margin-top:16px;">
+          <div class="card-h"><h2>ABOUT TO MIGRATE</h2><div class="sub">progress ≥ 70% of threshold (or top unfinished if thin) · mc ≥ $20k</div></div>
+          <div style="overflow-x:auto;">
+            <table>
+              <thead><tr><th>Token</th><th class="r">Prog</th><th class="r">MC</th><th class="r">Vol</th><th class="r">Chg</th><th class="r">Age</th></tr></thead>
+              <tbody id="about-body-2"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-xwatch">
+        <div class="card xfeed-card">
+          <div class="card-h">
+            <h2>X WATCH</h2>
+            <div class="sub">Allowlist live feed · public RSS</div>
+            <div class="meta" id="xfeed-meta"></div>
+          </div>
+          <div class="xfeed" id="xwatch-list"></div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-agent">
+        <div class="agent">
+          <div class="log" id="agent-log">
+            <div class="msg bot"><div class="k">agent</div>Paste a 0x wallet, a 0x token, or “scan all pet coins on pons”. Research only.</div>
+          </div>
+          <form class="composer" id="agent-form">
+            <input id="agent-input" autocomplete="off" placeholder="0x… or scan all pet coins on pons">
+            <button class="btn btn-solid" type="submit">ASK AGENT</button>
+          </form>
+        </div>
+      </section>
+    </main>
+
+    <footer class="dock">
+      <div class="dock-inner">
+        <span class="dock-label">WALLET</span>
+        <button class="btn-pnl" id="btn-pnl" type="button">PNL</button>
+        <span class="dock-meta">online · research only</span>
+      </div>
+    </footer>
+  </div>
+
+  <aside class="wallet-float" id="wallet-float" hidden>
+    <div class="wallet-head" id="wallet-drag">
+      <div class="wallet-title">WALLET · PNL</div>
+      <div class="wallet-head-right">
+        <div class="chip">USD</div>
+        <button class="x" id="wallet-close" type="button" title="close" aria-label="close">×</button>
+      </div>
     </div>
-  </header>
-
-  <nav class="tabs" id="tabs" role="tablist">
-    <button class="tab active" data-tab="home" type="button">Home</button>
-    <button class="tab" data-tab="hot" type="button">Hot Search</button>
-    <button class="tab" data-tab="dip" type="button">Buy the Dip</button>
-    <button class="tab" data-tab="smart" type="button">Smart Buys</button>
-    <button class="tab" data-tab="wallets" type="button">Wallets</button>
-  </nav>
-
-  <section class="status" id="status">
-    <span class="pill">loading…</span>
-  </section>
-
-  <!-- HOME · 3 columns -->
-  <main id="panel-home" class="panel active home-board">
-    <section class="card col-card">
-      <div class="card-h">
-        <h2>Top traders</h2>
-        <span class="tag">RH · top 20</span>
+    <div class="wallet-body">
+      <div class="wallet-addr" id="w-addr">—</div>
+      <div class="wallet-row">
+        <div>
+          <div class="bal" id="w-bal">$0</div>
+          <div class="lbl">BALANCE</div>
+        </div>
+        <div>
+          <div class="pnl" id="w-pnl">+$0</div>
+          <div class="lbl">PNL</div>
+        </div>
       </div>
-      <p class="muted tiny">
-        Birdeye PnL
-        <a class="ext" href="https://birdeye.so/" target="_blank" rel="noopener">full list ↗</a>
-      </p>
-      <div id="home-wallets" class="wallet-list col-scroll"></div>
-    </section>
+      <div class="rule"></div>
+      <div class="foot">▲ HOODRADAR</div>
+    </div>
+    <div class="wallet-resize" id="wallet-resize" aria-hidden="true"></div>
+  </aside>
 
-    <section class="card col-card">
-      <div class="card-h">
-        <h2>Hot Search</h2>
-        <span class="tag">GMGN</span>
-      </div>
-      <p class="muted tiny">
-        most searched RH
-        <a class="ext" href="https://gmgn.ai/trend?chain=robinhood&tab=hotsearch" target="_blank" rel="noopener">gmgn ↗</a>
-      </p>
-      <div id="home-hot" class="hits compact col-scroll"></div>
-    </section>
-
-    <section class="card col-card">
-      <div class="card-h">
-        <h2>Buy the Dip</h2>
-        <span class="tag">≥20% dump</span>
-      </div>
-      <p class="muted tiny">GMGN trending dips · research only</p>
-      <div id="home-dip" class="hits compact col-scroll"></div>
-    </section>
-
-    <section class="card home-smart-row">
-      <div class="card-h">
-        <h2>Smart buys (safe)</h2>
-        <span class="tag">preview · full tab</span>
-      </div>
-      <div id="home-smart" class="hits compact home-smart-grid"></div>
-    </section>
-  </main>
-
-  <!-- HOT SEARCH -->
-  <main id="panel-hot" class="panel">
-    <section class="card wide">
-      <div class="card-h">
-        <h2>Hot Search · Robinhood</h2>
-        <span class="tag">gmgn market hot-searches</span>
-      </div>
-      <p class="muted">
-        Same data family as
-        <a class="ext" href="https://gmgn.ai/trend?chain=robinhood&tab=hotsearch" target="_blank" rel="noopener">gmgn.ai Hot Search ↗</a>
-        · not a buy signal · research only
-      </p>
-      <div id="hot-meta" class="meta"></div>
-      <div id="hot-hits" class="hits"></div>
-      <pre id="hot-brief" class="brief"></pre>
-    </section>
-  </main>
-
-  <!-- DIP -->
-  <main id="panel-dip" class="panel">
-    <section class="card wide">
-      <div class="card-h">
-        <h2>Buy the Dip · full report</h2>
-        <span class="tag">GMGN RH top 10 · dump ≥20%</span>
-      </div>
-      <div id="dip-meta" class="meta"></div>
-      <div id="dip-hits" class="hits"></div>
-      <pre id="dip-brief" class="brief"></pre>
-    </section>
-  </main>
-
-  <!-- SMART -->
-  <main id="panel-smart" class="panel">
-    <section class="card wide">
-      <div class="card-h">
-        <h2>Smart Buys · full report</h2>
-        <span class="tag">high-PnL buys · honeypot drop</span>
-      </div>
-      <div id="smart-meta" class="meta"></div>
-      <div id="smart-dropped" class="dropped"></div>
-      <div id="smart-hits" class="hits"></div>
-      <pre id="smart-brief" class="brief"></pre>
-    </section>
-  </main>
-
-  <!-- WALLETS -->
-  <main id="panel-wallets" class="panel">
-    <section class="card wide">
-      <div class="card-h">
-        <h2>Wallets · expanded</h2>
-        <span class="tag">top 20 + recent buys</span>
-      </div>
-      <p class="muted">
-        <a class="ext" href="https://docs.birdeye.so/" target="_blank" rel="noopener">Birdeye API docs ↗</a>
-        · chain locked to <strong>robinhood</strong>
-      </p>
-      <div id="wallets-full" class="wallet-list"></div>
-      <pre id="wallets-brief" class="brief"></pre>
-    </section>
-  </main>
-
-  <footer class="foot">
-    DYOR · not financial advice · research only · keys never shown
-  </footer>
-
-  <div id="toast" class="toast hidden"></div>
-  <script src="/app.js?v=8"></script>
+  <div class="toast" id="toast" hidden></div>
+  <script src="/app.js"></script>
 </body>
 </html>
